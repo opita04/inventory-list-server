@@ -1,28 +1,70 @@
 @page "/"
 @rendermode InteractiveServer
+@using InventoryList.Models
+@using InventoryList.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@using Microsoft.Extensions.Logging
+@using BlazorBootstrap
 @inject IDbContextFactory<InventoryDbContext> DbFactory
+@inject ITemplateService TemplateService
+@inject IJSRuntime JS
+@inject ILogger<Inventory> Logger
 
 <div class="d-flex vh-100">
     @* ───── LEFT SIDEBAR ───── *@
-    <div class="bg-dark text-white p-3 d-flex flex-column" style="width:250px; min-width:250px;">
-        <h5 class="mb-3"><i class="bi bi-server"></i> Inventory Groups</h5>
-
-        <div class="input-group input-group-sm mb-3">
-            <input @bind="newGroupName" @bind:event="oninput" class="form-control" placeholder="New group name..." />
-            <button class="btn btn-success" @onclick="AddGroup" disabled="@string.IsNullOrWhiteSpace(newGroupName)">
-                <i class="bi bi-plus-lg"></i>
+    <div class="bg-dark text-white p-3 d-flex flex-column sidebar-transition @(isSidebarCollapsed ? "sidebar-collapsed" : "")" 
+         style="width:@(isSidebarCollapsed ? "60px" : "250px"); min-width:@(isSidebarCollapsed ? "60px" : "250px");">
+        
+        <div class="d-flex align-items-center justify-content-between mb-3 overflow-hidden">
+            @if (!isSidebarCollapsed) { <h5 class="mb-0 text-nowrap"><i class="bi bi-server"></i> Inventory Groups</h5> }
+            <button class="btn btn-sm btn-outline-light border-0" @onclick="ToggleSidebar">
+                <i class="bi @(isSidebarCollapsed ? "bi-text-indent-left" : "bi-text-indent-right")"></i>
             </button>
         </div>
+
+        @if (!isSidebarCollapsed)
+        {
+            <div class="input-group input-group-sm mb-3">
+                <input @bind="newGroupName" @bind:event="oninput" class="form-control" placeholder="New group..." />
+                <select @bind="newGroupTemplateId" class="form-select form-select-sm border-secondary bg-dark text-white" style="max-width:85px;" title="Select Template">
+                    <option value="">Blank</option>
+                    @foreach (var t in allTemplates) { <option value="@t.Id">@t.Name</option> }
+                </select>
+                <button class="btn btn-success" @onclick="AddGroup" disabled="@string.IsNullOrWhiteSpace(newGroupName)">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+            </div>
+        }
 
         <div class="list-group list-group-flush overflow-auto flex-grow-1">
             @foreach (var g in groups)
             {
-                <button class="list-group-item list-group-item-action @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary"
+                <button class="list-group-item list-group-item-action @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary px-2"
+                        title="@g.Name"
                         @onclick="() => SelectGroup(g.Id)">
-                    @g.Name
-                    <span class="badge bg-secondary float-end">@g.Items.Count</span>
+                    <div class="d-flex align-items-center justify-content-between">
+                        @if (isSidebarCollapsed)
+                        {
+                            <span class="badge bg-secondary">@g.Name.FirstOrDefault()</span>
+                        }
+                        else
+                        {
+                            <span class="text-truncate me-2">@g.Name</span>
+                            <span class="badge bg-secondary font-monospace" style="font-size: 0.65rem;">@g.Items.Count</span>
+                        }
+                    </div>
                 </button>
             }
+        </div>
+
+        <div class="mt-auto pt-3 border-top border-secondary overflow-hidden">
+            <a class="nav-link text-white p-2 d-flex align-items-center" href="/templates" title="Manage Templates">
+                <i class="bi bi-gear me-2"></i> @(!isSidebarCollapsed ? "Templates" : "")
+            </a>
+            <a class="nav-link text-white p-2 d-flex align-items-center" href="/history" title="System History">
+                <i class="bi bi-clock-history me-2"></i> @(!isSidebarCollapsed ? "History" : "")
+            </a>
         </div>
     </div>
 
@@ -31,81 +73,80 @@
         @if (selectedGroupId > 0)
         {
             <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
-                <h4 class="mb-0">@selectedGroupName</h4>
+                <div class="d-flex align-items-center">
+                    <h4 class="mb-0 me-3">@selectedGroupName</h4>
+                </div>
                 <div>
-                    <button class="btn btn-primary btn-sm me-2" @onclick="OpenBulkAddModal">
-                        <i class="bi bi-clipboard-data"></i> Bulk Add (Excel Paste)
+                    <button class="btn btn-outline-secondary btn-sm me-2" @onclick="AddColumnInline">
+                        <i class="bi bi-layout-three-columns"></i> Add Column
                     </button>
-                    <button class="btn btn-outline-danger btn-sm" @onclick="DeleteGroup">
-                        <i class="bi bi-trash"></i> Delete Group
+                    <button class="btn btn-sm btn-outline-success border-0 me-2" @onclick="CopyGridToClipboard" title="Copy Grid to Excel (TSV)">
+                        <i class="bi bi-clipboard-data"></i> Copy to Excel
+                    </button>
+                    <button class="btn btn-success btn-sm me-2" @onclick="OpenSingleAddModal">
+                        <i class="bi bi-plus-lg"></i> Add Row
+                    </button>
+                    <button class="btn btn-primary btn-sm me-2" @onclick="OpenBulkAddModal">
+                        <i class="bi bi-clipboard-data"></i> Bulk Add
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" @onclick="DeleteGroup" title="Delete Group">
+                        <i class="bi bi-trash"></i>
                     </button>
                 </div>
             </div>
 
             <div class="flex-grow-1 overflow-auto p-3">
-                <Grid @ref="grid" TItem="InventoryItem"
-                      Class="table table-striped table-bordered table-sm"
+                <Grid @ref="grid" @key="gridRev" TItem="InventoryItem"
+                      Id="inventoryGrid"
+                      Class="table table-striped table-bordered table-sm compact-grid"
                       Data="items"
-                      AllowFiltering="true"
+                      AllowFiltering="false"
                       AllowSorting="true"
                       Responsive="true">
+                    
+                    @foreach (var m in activeMappings)
+                    {
+                        var mapping = m;
+                        <GridColumn TItem="InventoryItem" PropertyName="@mapping.Property" Sortable="true" Filterable="false" SortKeySelector="@(i => GetValue(i, mapping.Property) as IComparable)">
+                            <HeaderContent>
+                                @if (editingMapping == mapping)
+                                {
+                                    <input class="form-control form-control-sm border-0 bg-transparent px-1 header-input fw-bold" 
+                                           style="min-width: 80px; box-shadow: none;"
+                                           value="@mapping.Header" 
+                                           autofocus
+                                           @onclick:stopPropagation="true"
+                                           @onblur="() => editingMapping = null"
+                                           @onchange="@(async e => { await UpdateColumnName(mapping, e.Value?.ToString()); editingMapping = null; })" />
+                                }
+                                else
+                                {
+                                    <span class="fw-bold px-1 d-inline-block w-100" 
+                                          style="cursor: pointer; min-width: 80px;"
+                                          title="Click to sort, double-click to rename"
+                                          @onclick="@(() => SortColumn(mapping.Property))"
+                                          @ondblclick="() => editingMapping = mapping">
+                                        @mapping.Header
+                                    </span>
+                                }
+                            </HeaderContent>
+                            <ChildContent>
+                                <input class="form-control form-control-sm border-0 bg-transparent px-1"
+                                       value="@GetValue(context, mapping.Property)"
+                                       @onchange="@(e => UpdateItemProperty(context, mapping.Property, e.Value?.ToString()))" />
+                            </ChildContent>
+                        </GridColumn>
+                    }
 
-                    <GridColumn TItem="InventoryItem" HeaderText="Name" PropertyName="Name" SortKeySelector="item => item.Name" FilterTextboxWidth="120">
-                        @context.Name
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Notes" PropertyName="Notes" SortKeySelector="item => item.Notes" FilterTextboxWidth="120">
-                        @context.Notes
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="IP" PropertyName="IP" SortKeySelector="item => item.IP" FilterTextboxWidth="100">
-                        @context.IP
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Domain" PropertyName="Domain" SortKeySelector="item => item.Domain" FilterTextboxWidth="120">
-                        @context.Domain
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Onboarded" PropertyName="Onboarded" SortKeySelector="item => item.Onboarded" FilterTextboxWidth="100">
-                        @context.Onboarded
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Recovery Process" PropertyName="RecoveryProcess" SortKeySelector="item => item.RecoveryProcess" FilterTextboxWidth="120">
-                        @context.RecoveryProcess
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="RAM" PropertyName="RAM" SortKeySelector="item => item.RAM" FilterTextboxWidth="80">
-                        @context.RAM
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Cores" PropertyName="Cores" SortKeySelector="item => item.Cores" FilterTextboxWidth="80">
-                        @context.Cores
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Version" PropertyName="Version" SortKeySelector="item => item.Version" FilterTextboxWidth="100">
-                        @context.Version
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Edition" PropertyName="Edition" SortKeySelector="item => item.Edition" FilterTextboxWidth="100">
-                        @context.Edition
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Full Version" PropertyName="FullVersion" SortKeySelector="item => item.FullVersion" FilterTextboxWidth="120">
-                        @context.FullVersion
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="CU Version" PropertyName="CUVersion" SortKeySelector="item => item.CUVersion" FilterTextboxWidth="100">
-                        @context.CUVersion
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="KB Version" PropertyName="KBVersion" SortKeySelector="item => item.KBVersion" FilterTextboxWidth="100">
-                        @context.KBVersion
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Last Patched On" PropertyName="LastPatchedOn" SortKeySelector="item => item.LastPatchedOn" FilterTextboxWidth="120">
-                        @context.LastPatchedOn
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Environment" PropertyName="Environment" SortKeySelector="item => item.Environment" FilterTextboxWidth="100">
-                        @context.Environment
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="OS" PropertyName="OS" SortKeySelector="item => item.OS" FilterTextboxWidth="100">
-                        @context.OS
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Product" PropertyName="Product" SortKeySelector="item => item.Product" FilterTextboxWidth="120">
-                        @context.Product
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Owner" PropertyName="Owner" SortKeySelector="item => item.Owner" FilterTextboxWidth="120">
-                        @context.Owner
-                    </GridColumn>
-                    <GridColumn TItem="InventoryItem" HeaderText="Status Notes" PropertyName="StatusNotes" SortKeySelector="item => item.StatusNotes" FilterTextboxWidth="120">
-                        @context.StatusNotes
+                    <GridColumn TItem="InventoryItem" PropertyName="Id" Filterable="false" Sortable="false">
+                        <HeaderContent>
+                            <span style="min-width: 40px; display:inline-block;"></span>
+                        </HeaderContent>
+                        <ChildContent>
+                            <button class="btn btn-sm text-danger border-0 p-0" title="Delete Row" @onclick="() => DeleteItem(context)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </ChildContent>
                     </GridColumn>
                 </Grid>
             </div>
@@ -136,17 +177,17 @@
                 <table class="table table-sm table-bordered mb-0" style="font-size: 0.78rem;">
                     <thead class="table-dark">
                         <tr>
-                            @foreach (var h in ExcelPasteParser.ColumnHeaders)
+                            @foreach (var m in activeMappings)
                             {
-                                <th class="text-nowrap px-2">@h</th>
+                                <th class="text-nowrap px-2">@m.Header</th>
                             }
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            @foreach (var h in ExcelPasteParser.ColumnHeaders)
+                            @foreach (var m in activeMappings)
                             {
-                                <td class="text-muted px-2" style="font-size:0.7rem;">@($"Col {Array.IndexOf(ExcelPasteParser.ColumnHeaders, h) + 1}")</td>
+                                <td class="text-muted px-2" style="font-size:0.7rem;">@m.Property</td>
                             }
                         </tr>
                     </tbody>
@@ -164,7 +205,7 @@
         else
         {
             <div class="alert alert-success py-2">
-                <i class="bi bi-check-circle"></i> Parsed <strong>@parsedItems.Count</strong> row(s). Review below then click <strong>Save to Database</strong>.
+                <i class="bi bi-check-circle"></i> Parsed <strong>@parsedItems.Count</strong> row(s). Review below then click <strong>Save to Inventory</strong>.
             </div>
 
             <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
@@ -172,9 +213,9 @@
                     <thead class="table-dark sticky-top">
                         <tr>
                             <th>#</th>
-                            @foreach (var h in ExcelPasteParser.ColumnHeaders)
+                            @foreach (var m in activeMappings)
                             {
-                                <th class="text-nowrap">@h</th>
+                                <th class="text-nowrap">@m.Header</th>
                             }
                         </tr>
                     </thead>
@@ -184,25 +225,10 @@
                             var item = parsedItems[i];
                             <tr>
                                 <td>@(i + 1)</td>
-                                <td>@item.Name</td>
-                                <td>@item.Notes</td>
-                                <td>@item.IP</td>
-                                <td>@item.Domain</td>
-                                <td>@item.Onboarded</td>
-                                <td>@item.RecoveryProcess</td>
-                                <td>@item.RAM</td>
-                                <td>@item.Cores</td>
-                                <td>@item.Version</td>
-                                <td>@item.Edition</td>
-                                <td>@item.FullVersion</td>
-                                <td>@item.CUVersion</td>
-                                <td>@item.KBVersion</td>
-                                <td>@item.LastPatchedOn</td>
-                                <td>@item.Environment</td>
-                                <td>@item.OS</td>
-                                <td>@item.Product</td>
-                                <td>@item.Owner</td>
-                                <td>@item.StatusNotes</td>
+                                @foreach (var m in activeMappings)
+                                {
+                                    <td>@GetValue(item, m.Property)</td>
+                                }
                             </tr>
                         }
                     </tbody>
@@ -224,9 +250,32 @@
                 <i class="bi bi-arrow-left"></i> Back to Edit
             </Button>
             <Button Color="ButtonColor.Success" @onclick="SaveParsedItems">
-                <i class="bi bi-database-add"></i> Save to Database (@parsedItems.Count rows)
+                <i class="bi bi-save"></i> Save to Inventory (@parsedItems.Count rows)
             </Button>
         }
+    </FooterTemplate>
+</Modal>
+
+@* ───── SINGLE ADD MODAL ───── *@
+<Modal @ref="singleAddModal" Title="Add Item" Size="ModalSize.Large">
+    <BodyTemplate>
+        <div class="row g-3">
+            @foreach (var m in activeMappings)
+            {
+                <div class="col-md-6">
+                    <label class="form-label form-label-sm mb-1 fw-bold">@m.Header</label>
+                    <input class="form-control form-control-sm" 
+                           value="@singleAddItemData.GetValueOrDefault(m.Property, "")"
+                           @onchange="@(e => UpdateSingleAddItemData(m.Property, e.Value?.ToString() ?? ""))" />
+                </div>
+            }
+        </div>
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseSingleAddModal">Cancel</Button>
+        <Button Color="ButtonColor.Success" @onclick="SaveSingleItem">
+            <i class="bi bi-save"></i> Save Item
+        </Button>
     </FooterTemplate>
 </Modal>
 
@@ -234,9 +283,41 @@
     // ── State ──
     private List<InventoryGroup> groups = new();
     private List<InventoryItem> items = new();
+    private List<InventoryTemplate> allTemplates = new();
+    private InventoryGroup? selectedGroup;
     private int selectedGroupId;
     private string selectedGroupName = "";
     private string newGroupName = "";
+    private int? newGroupTemplateId;
+    private bool gridRev = false;
+    private bool isSidebarCollapsed = false;
+    private string currentSortProperty = "";
+    private SortDirection currentSortDirection = SortDirection.None;
+
+    private void ToggleSidebar() => isSidebarCollapsed = !isSidebarCollapsed;
+
+    private async Task SortColumn(string propertyName)
+    {
+        if (currentSortProperty == propertyName)
+        {
+            currentSortDirection = currentSortDirection == SortDirection.Ascending ? SortDirection.Descending : SortDirection.Ascending;
+        }
+        else
+        {
+            currentSortProperty = propertyName;
+            currentSortDirection = SortDirection.Ascending;
+        }
+
+        if (currentSortDirection == SortDirection.Ascending)
+            items = items.OrderBy(i => GetValue(i, propertyName) as IComparable).ToList();
+        else
+            items = items.OrderByDescending(i => GetValue(i, propertyName) as IComparable).ToList();
+        
+        StateHasChanged();
+    }
+    // ── Templating ──
+    private List<SharedColumnMapping> activeMappings = new();
+    private SharedColumnMapping? editingMapping = null;
 
     // ── Bulk Add ──
     private Modal bulkModal = default!;
@@ -246,9 +327,52 @@
     private bool showPreview;
     private List<InventoryItem> parsedItems = new();
 
+    // ── Single Add ──
+    private Modal singleAddModal = default!;
+    private Dictionary<string, string> singleAddItemData = new();
+
     protected override async Task OnInitializedAsync()
     {
+        using var db = await DbFactory.CreateDbContextAsync();
+        allTemplates = await db.InventoryTemplates.Where(t => !t.IsDeleted).ToListAsync();
         await LoadGroups();
+    }
+
+    private bool _shouldResizeGrid = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var lastIdStr = await JS.InvokeAsync<string>("localStorage.getItem", "LastViewGroupId");
+                if (int.TryParse(lastIdStr, out int lastId) && lastId > 0 && lastId != selectedGroupId && groups.Any(g => g.Id == lastId))
+                {
+                    await SelectGroup(lastId, false);
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex) { Logger.LogWarning(ex, "Failed to load last group from local storage"); }
+
+            _shouldResizeGrid = true;
+        }
+
+        if (_shouldResizeGrid)
+        {
+            _shouldResizeGrid = false;
+            try 
+            {
+                await JS.InvokeVoidAsync("gridUtils.initResizing", "inventoryGrid");
+            }
+            catch (Exception ex) { Logger.LogError(ex, "Failed to init grid resizing"); }
+        }
+    }
+
+    private void ReinitGridAsync()
+    {
+        _shouldResizeGrid = true;
+        StateHasChanged();
     }
 
     // ── Group Operations ──
@@ -258,8 +382,14 @@
         using var db = await DbFactory.CreateDbContextAsync();
         groups = await db.InventoryGroups
             .Include(g => g.Items)
+            .Where(g => !g.IsDeleted)
             .OrderBy(g => g.Name)
             .ToListAsync();
+            
+        if (selectedGroupId == 0 && groups.Any())
+        {
+            await SelectGroup(groups.First().Id, false);
+        }
     }
 
     private async Task AddGroup()
@@ -267,28 +397,178 @@
         if (string.IsNullOrWhiteSpace(newGroupName)) return;
 
         using var db = await DbFactory.CreateDbContextAsync();
-        var group = new InventoryGroup { Name = newGroupName.Trim() };
+        var group = new InventoryGroup { Name = newGroupName.Trim(), InventoryTemplateId = newGroupTemplateId };
+        
+        if (newGroupTemplateId.HasValue) 
+        {
+            var template = await db.InventoryTemplates.FindAsync(newGroupTemplateId.Value);
+            if (template != null && !string.IsNullOrEmpty(template.MappingsJson))
+            {
+                group.ColumnSettingsJson = template.MappingsJson;
+            }
+        }
+        else 
+        {
+            group.ColumnSettingsJson = JsonSerializer.Serialize(new List<SharedColumnMapping> { new() { Header = "Name", Property = "Name" } });
+        }
+
         db.InventoryGroups.Add(group);
         await db.SaveChangesAsync();
 
         newGroupName = "";
+        newGroupTemplateId = null;
         await LoadGroups();
         await SelectGroup(group.Id);
     }
 
-    private async Task SelectGroup(int groupId)
+    private async Task SelectGroup(int groupId, bool saveToStorage = true)
     {
         selectedGroupId = groupId;
         using var db = await DbFactory.CreateDbContextAsync();
-        var group = await db.InventoryGroups
+        selectedGroup = await db.InventoryGroups
             .Include(g => g.Items)
+            .Include(g => g.InventoryTemplate)
             .FirstOrDefaultAsync(g => g.Id == groupId);
 
-        if (group is not null)
+        if (selectedGroup is not null && selectedGroup.IsDeleted)
         {
-            selectedGroupName = group.Name;
-            items = group.Items.OrderBy(i => i.Name).ToList();
+            selectedGroup = null;
+            selectedGroupId = 0;
+            return;
         }
+
+        if (selectedGroup is not null)
+        {
+            selectedGroupName = selectedGroup.Name;
+            items = selectedGroup.Items.OrderBy(i => i.Name).ToList();
+            UpdateActiveMappings();
+            gridRev = !gridRev;
+            
+            if (saveToStorage)
+            {
+                try { await JS.InvokeVoidAsync("localStorage.setItem", "LastViewGroupId", groupId.ToString()); } catch (Exception ex) { Logger.LogWarning(ex, "Failed to save to local storage"); }
+            }
+
+            ReinitGridAsync();
+        }
+    }
+
+    private void UpdateActiveMappings()
+    {
+        if (!string.IsNullOrEmpty(selectedGroup?.ColumnSettingsJson))
+        {
+            try { 
+                activeMappings = JsonSerializer.Deserialize<List<SharedColumnMapping>>(selectedGroup.ColumnSettingsJson) ?? new(); 
+                return; 
+            } catch (Exception ex) { Logger.LogWarning(ex, "Failed to deserialize ColumnSettingsJson"); }
+        }
+
+        if (selectedGroup?.InventoryTemplate != null && !string.IsNullOrEmpty(selectedGroup.InventoryTemplate.MappingsJson))
+        {
+            try { 
+                activeMappings = JsonSerializer.Deserialize<List<SharedColumnMapping>>(selectedGroup.InventoryTemplate.MappingsJson) ?? new(); 
+                return; 
+            } catch (Exception ex) { Logger.LogWarning(ex, "Failed to deserialize Template MappingsJson"); }
+        }
+
+        activeMappings = GetDefaultMappings();
+    }
+
+    private List<SharedColumnMapping> GetDefaultMappings()
+    {
+        return new List<SharedColumnMapping> { new() { Header = "Name", Property = "Name" } };
+    }
+
+    private async Task UpdateColumnName(SharedColumnMapping mapping, string? newHeader)
+    {
+        if (string.IsNullOrWhiteSpace(newHeader)) return;
+        mapping.Header = newHeader;
+        await SaveGroupColumnSettings();
+    }
+
+    private async Task UpdateItemProperty(InventoryItem item, string propertyName, string? newValue)
+    {
+        var propInfo = item.GetType().GetProperty(propertyName);
+        if (propInfo != null && propInfo.CanWrite)
+        {
+            propInfo.SetValue(item, newValue ?? string.Empty);
+            using var db = await DbFactory.CreateDbContextAsync();
+            db.InventoryItems.Update(item);
+            await db.SaveChangesAsync();
+        }
+    }
+
+    private async Task CopyGridToClipboard()
+    {
+        if (!items.Any()) return;
+
+        var sb = new System.Text.StringBuilder();
+        // Headers
+        sb.AppendLine(string.Join("\t", activeMappings.Select(m => m.Header)));
+
+        // Rows
+        foreach (var item in items)
+        {
+            var row = activeMappings.Select(m => GetValue(item, m.Property)?.ToString() ?? "");
+            sb.AppendLine(string.Join("\t", row));
+        }
+
+        bool success = await JS.InvokeAsync<bool>("gridUtils.copyToClipboard", sb.ToString());
+        if (success)
+        {
+            // Optional: Show a brief toast or success state if needed
+            Logger.LogInformation("Grid data copied to clipboard.");
+        }
+    }
+
+    private async Task DeleteItem(InventoryItem item)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{item.Name ?? "this item"}'?");
+        if (!confirmed) return;
+        
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.InventoryItems.Remove(item);
+        await db.SaveChangesAsync();
+        
+        items.Remove(item);
+        gridRev = !gridRev;
+        ReinitGridAsync();
+    }
+
+    private async Task AddColumnInline()
+    {
+        var itemProperties = typeof(InventoryItem).GetProperties()
+            .Where(p => p.PropertyType == typeof(string) && p.Name != "InventoryGroup")
+            .Select(p => p.Name).ToList();
+
+        var usedProps = activeMappings.Select(m => m.Property).ToList();
+        var availableProp = itemProperties.FirstOrDefault(p => !usedProps.Contains(p));
+        if (availableProp == null) return; // Limit reached
+
+        activeMappings.Add(new SharedColumnMapping { Header = "New Column", Property = availableProp });
+        gridRev = !gridRev;
+        await SaveGroupColumnSettings();
+        ReinitGridAsync();
+    }
+
+    private async Task SaveGroupColumnSettings()
+    {
+        if (selectedGroup == null) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var group = await db.InventoryGroups.FindAsync(selectedGroup.Id);
+        if (group != null)
+        {
+            group.ColumnSettingsJson = JsonSerializer.Serialize(activeMappings);
+            await db.SaveChangesAsync();
+            selectedGroup.ColumnSettingsJson = group.ColumnSettingsJson;
+        }
+    }
+
+
+
+    private object? GetValue(InventoryItem item, string propertyName)
+    {
+        return item.GetType().GetProperty(propertyName)?.GetValue(item);
     }
 
     private async Task DeleteGroup()
@@ -297,12 +577,13 @@
         var group = await db.InventoryGroups.FindAsync(selectedGroupId);
         if (group is not null)
         {
-            db.InventoryGroups.Remove(group);
+            group.IsDeleted = true;
             await db.SaveChangesAsync();
         }
 
         selectedGroupId = 0;
         selectedGroupName = "";
+        selectedGroup = null;
         items = new();
         await LoadGroups();
     }
@@ -323,7 +604,14 @@
     private void ParsePastedData()
     {
         parseError = "";
-        parsedItems = ExcelPasteParser.Parse(pastedText, selectedGroupId);
+        parsedItems = ExcelPasteParser.Parse(pastedText, selectedGroupId, activeMappings);
+
+        if (parsedItems.Count > 1000)
+        {
+            parseError = $"Too many rows pasted ({parsedItems.Count}). The maximum allowed is 1000. Please paste in smaller batches.";
+            parsedItems.Clear();
+            return;
+        }
 
         if (parsedItems.Count == 0)
         {
@@ -346,6 +634,46 @@
         await db.SaveChangesAsync();
 
         await bulkModal.HideAsync();
+        await SelectGroup(selectedGroupId);
+        await LoadGroups();
+    }
+
+    // ── Single Add Operations ──
+
+    private async Task OpenSingleAddModal()
+    {
+        singleAddItemData.Clear();
+        foreach (var m in activeMappings)
+        {
+            singleAddItemData[m.Property] = "";
+        }
+        await singleAddModal.ShowAsync();
+    }
+
+    private void UpdateSingleAddItemData(string property, string value)
+    {
+        singleAddItemData[property] = value;
+    }
+
+    private async Task CloseSingleAddModal() => await singleAddModal.HideAsync();
+
+    private async Task SaveSingleItem()
+    {
+        var newItem = new InventoryItem { InventoryGroupId = selectedGroupId };
+        foreach (var kvp in singleAddItemData)
+        {
+            var propInfo = newItem.GetType().GetProperty(kvp.Key);
+            if (propInfo != null && propInfo.CanWrite)
+            {
+                propInfo.SetValue(newItem, kvp.Value);
+            }
+        }
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.InventoryItems.Add(newItem);
+        await db.SaveChangesAsync();
+
+        await singleAddModal.HideAsync();
         await SelectGroup(selectedGroupId);
         await LoadGroups();
     }

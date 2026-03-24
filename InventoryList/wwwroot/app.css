@@ -40,12 +40,131 @@ h1:focus {
     content: "An error has occurred."
 }
 
-/* Ensure the grid scrolls horizontally for many columns */
-.table-responsive {
-    overflow-x: auto;
+/* Modern Compact Grid Styles */
+.compact-grid {
+    font-size: 0.8rem !important;
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
-.table th, .table td {
+.compact-grid thead th {
+    background-color: #f8f9fa;
+    color: #495057;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.03em;
+    padding: 6px 10px !important;
+    border-bottom: 2px solid #dee2e6 !important;
+}
+
+.compact-grid tbody td {
+    padding: 4px 10px !important;
+    vertical-align: middle;
+    border-bottom: 1px solid #f1f1f1 !important;
+}
+
+.compact-grid tbody tr:nth-of-type(odd) {
+    background-color: #fff;
+}
+
+.compact-grid tbody tr:nth-of-type(even) {
+    background-color: #fafbfc;
+}
+
+.compact-grid tbody tr:hover {
+    background-color: #f1f5f9 !important;
+}
+
+/* Sidebar & Layout Fixes */
+.list-group-item.active {
+    background-color: #0d6efd !important;
+    border-color: #0d6efd !important;
+}
+
+.nav-link:hover {
+    background-color: rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+
+/* Scrollbar Styling for Premium Feel */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #bbb;
+}
+
+/* Column Resizing and Autofit */
+.compact-grid {
+    width: 100%;
+    table-layout: auto;
+}
+
+.compact-grid thead th {
+    position: relative;
     white-space: nowrap;
-    font-size: 0.85rem;
+}
+
+.compact-grid tbody td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.resizer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    background: transparent;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 999;
+}
+
+.resizer:hover, .resizer:active {
+    background: rgba(0, 123, 255, 0.15);
+    border-right: 2px solid #0d6efd;
+}
+
+/* Hide Blazor.Bootstrap default filter row if still present */
+.bb-grid-filter-row, .grid-filter-row {
+    display: none !important;
+}
+
+/* Hide default Blazor Bootstrap sorting icons on headers without losing functionality */
+.compact-grid thead th svg,
+.compact-grid thead th i.bi-sort-alpha-down,
+.compact-grid thead th i.bi-sort-alpha-up,
+.compact-grid thead th i.bi-sort-up,
+.compact-grid thead th i.bi-sort-down {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    position: absolute;
+    right: 5px;
+}
+
+/* Ensure the header text area remains the primary hit target */
+.compact-grid thead th {
+    cursor: pointer !important;
+    position: relative;
+    user-select: none;
+}
+
+/* Sidebar transition effects */
+.sidebar-transition {
+    transition: width 0.3s ease, min-width 0.3s ease;
+}
+.sidebar-collapsed .list-group-item {
+    text-align: center;
 }

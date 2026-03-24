@@ -1,0 +1,127 @@
+@page "/history"
+@rendermode InteractiveServer
+@using InventoryList.Models
+@using InventoryList.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<InventoryDbContext> DbFactory
+
+<div class="container-fluid p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center">
+            <a href="/" class="btn btn-outline-secondary me-3">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            <h2 class="mb-0"><i class="bi bi-clock-history"></i> System History & Recovery</h2>
+        </div>
+        <button class="btn btn-outline-primary" @onclick="LoadLogs">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width:200px">Timestamp (UTC)</th>
+                            <th style="width:150px">User</th>
+                            <th style="width:100px">Action</th>
+                            <th style="width:150px">Entity Type</th>
+                            <th>Target Name</th>
+                            <th style="width:120px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (logs == null)
+                        {
+                            <tr><td colspan="6" class="text-center py-4">Loading history...</td></tr>
+                        }
+                        else if (!logs.Any())
+                        {
+                            <tr><td colspan="6" class="text-center py-4 text-muted">No history logs recorded yet.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var log in logs)
+                            {
+                                <tr>
+                                    <td>@log.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                    <td>
+                                        <span class="badge bg-secondary">@log.User</span>
+                                    </td>
+                                    <td>
+                                        @if(log.Action.Contains("Deleted")) { <span class="text-danger fw-bold">@log.Action</span> }
+                                        else if(log.Action.Contains("Restored")) { <span class="text-success fw-bold">@log.Action</span> }
+                                        else if(log.Action == "Added") { <span class="text-primary fw-bold">@log.Action</span> }
+                                        else { <span>@log.Action</span> }
+                                    </td>
+                                    <td><span class="badge bg-dark border">@log.EntityType</span></td>
+                                    <td class="fw-bold">@log.EntityName</td>
+                                    <td class="text-end pe-3">
+                                        @if (log.Action.Contains("Deleted") && log.EntityId > 0 && 
+                                            (log.EntityType == "InventoryGroup" || log.EntityType == "InventoryTemplate"))
+                                        {
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => RestoreEntity(log.EntityType, log.EntityId)">
+                                                <i class="bi bi-arrow-return-left"></i> Restore
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<AuditLog>? logs;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+    private async Task LoadLogs()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        logs = await db.AuditLogs
+            .OrderByDescending(l => l.Timestamp)
+            .Take(100)
+            .ToListAsync();
+    }
+
+    private async Task RestoreEntity(string entityType, int entityId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        bool restored = false;
+
+        if (entityType == "InventoryGroup")
+        {
+            var group = await db.InventoryGroups.FindAsync(entityId);
+            if (group != null && group.IsDeleted)
+            {
+                group.IsDeleted = false;
+                restored = true;
+            }
+        }
+        else if (entityType == "InventoryTemplate")
+        {
+            var template = await db.InventoryTemplates.FindAsync(entityId);
+            if (template != null && template.IsDeleted)
+            {
+                template.IsDeleted = false;
+                restored = true;
+            }
+        }
+
+        if (restored)
+        {
+            await db.SaveChangesAsync();
+            await LoadLogs();
+        }
+    }
+}

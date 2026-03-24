@@ -1,29 +1,30 @@
-# Inventory List Server
+# Inventory List
 
-A high-performance **Blazor Server** application designed for efficient server inventory management. Built on **.NET 8**, it features a robust SQL Server backend, interactive UI components, and a specialized bulk-paste system for Excel data.
+A modern, streamlined inventory management system built with Blazor Server and .NET 8.
 
 ## 🚀 Features
 
--   **Interactive Grid**: Real-time filtering, sorting, and pagination powered by `Blazor.Bootstrap`.
--   **Excel Bulk Paste**: Unique tab-delimited parser to import server lists directly from Excel spreadsheets with a preview step.
--   **Group Management**: Organize inventory into logical groups with a dynamic sidebar navigation.
--   **Modern Architecture**: Clean separation of concerns with EF Core 8 and a sleek, responsive design.
+-   **Inline Grid Editing**: Data-entry simplified. Edit any cell directly in the grid; changes are automatically persisted to the database on blur or enter.
+-   **Collapsible Sidebar**: Maximize your workspace with a smooth, collapsible navigation menu (mini-sidebar mode).
+-   **Row Management**: Effortlessly remove rows with a single click. Includes immediate visual feedback and database synchronization.
+-   **Excel-Style Copy**: Copy the entire grid to your clipboard in tab-delimited format, ready to paste directly into Excel.
+-   **Audit System**: Built-in change tracking that logs all modifications and batch additions for data integrity.
+-   **History Viewing**: Dedicated history dashboard to review system logs and audit trails.
 
 ## 🛠️ Tech Stack
 
--   **Frontend**: Blazor Server, Blazor.Bootstrap 3.x
--   **Backend**: .NET 8, Entity Framework Core 8
--   **Database**: SQL Server
--   **Design**: Vanilla CSS with a focus on visual hierarchy and whitespace.
+-   **Frontend**: Blazor Server (.NET 8)
+-   **Style**: Vanilla CSS (Modern Compact)
+-   **Database**: SQLite (Local & Portable)
+-   **ORM**: Entity Framework Core
 
-## 📋 Getting Started
+## 🏁 Getting Started
 
 ### Prerequisites
 
 -   [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
--   SQL Server (LocalDB or full instance)
 
-### Installation
+### Installation & Run
 
 1.  **Clone the repository**:
     ```bash
@@ -31,32 +32,19 @@ A high-performance **Blazor Server** application designed for efficient server i
     cd inventory-list-server
     ```
 
-2.  **Configure Database**:
-    Update the connection string in `InventoryList/appsettings.json`:
-    ```json
-    "ConnectionStrings": {
-      "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=InventoryDb;Trusted_Connection=True;MultipleActiveResultSets=true"
-    }
+2.  **Restore dependencies**:
+    ```bash
+    dotnet restore
     ```
 
-3.  **Apply Migrations**:
-    ```bash
-    dotnet ef database update --project InventoryList
-    ```
+3.  **Database Setup**:
+    The application uses **SQLite** for local development. The database file (`inventory.db`) will be automatically initialized upon the first run.
 
 4.  **Run the application**:
     ```bash
     dotnet run --project InventoryList
     ```
 
-## 🏗️ Project Structure
-
--   `/InventoryList`: Core Blazor Server application.
-    -   `/Components`: UI components and pages.
-    -   `/Models`: Domain entities (`InventoryGroup`, `InventoryItem`).
-    -   `/Services`: Business logic, including the Excel paste parser.
-    -   `/Data`: EF Core DbContext and migrations.
--   `/docs`: Documentation and implementation plans.
-
 ---
-*Created with ANTIGRAVITY — Senior Frontend Architect & Avant-Garde UI Designer.*
+
+*Designed with Intentional Minimalism by the Frontend Architecture Team.*

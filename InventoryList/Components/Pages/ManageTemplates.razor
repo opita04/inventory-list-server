@@ -1,0 +1,167 @@
+@page "/templates"
+@rendermode InteractiveServer
+@using InventoryList.Models
+@using InventoryList.Services
+@using System.Text.Json
+@inject ITemplateService TemplateService
+@inject NavigationManager NavManager
+
+<div class="container-fluid p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex align-items-center">
+            <a href="/" class="btn btn-outline-secondary me-3">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+            <h2 class="mb-0"><i class="bi bi-gear-fill"></i> Inventory Templates</h2>
+        </div>
+        <button class="btn btn-primary" @onclick="CreateNewTemplate">
+            <i class="bi bi-plus-lg"></i> Create New Template
+        </button>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4 border-end">
+            <div class="list-group">
+                @foreach (var t in templates)
+                {
+                    <button class="list-group-item list-group-item-action @(t.Id == editingTemplate?.Id ? "active" : "")"
+                            @onclick="() => EditTemplate(t)">
+                        @t.Name
+                    </button>
+                }
+            </div>
+        </div>
+        <div class="col-md-8">
+            @if (editingTemplate != null)
+            {
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Template Name</label>
+                            <input @bind="editingTemplate.Name" class="form-control" placeholder="e.g. Server, Workstation..." />
+                        </div>
+
+                        <h6>Columns</h6>
+                        <p class="text-muted small">
+                            Define the default columns included in this template. 
+                            <strong>Note:</strong> Templates act as initial blueprints. Updating these columns will not automatically push changes to existing inventory groups.
+                        </p>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Column Name</th>
+                                        <th style="width:50px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var m in currentMappings)
+                                    {
+                                        <tr>
+                                            <td><input @bind="m.Header" class="form-control form-control-sm" /></td>
+                                            <td>
+                                                <button class="btn btn-outline-danger btn-sm" @onclick="() => RemoveMapping(m)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <button class="btn btn-outline-secondary btn-sm mb-3" @onclick="AddMapping">
+                            <i class="bi bi-plus"></i> Add Column
+                        </button>
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <button class="btn btn-danger" @onclick="DeleteTemplate">Delete</button>
+                            <button class="btn btn-success" @onclick="SaveTemplate">Save Template</button>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="text-center text-muted mt-5">
+                    <p>Select a template to edit or create a new one.</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<InventoryTemplate> templates = new();
+    private InventoryTemplate? editingTemplate;
+    private List<SharedColumnMapping> currentMappings = new();
+    private List<string> itemProperties = typeof(InventoryItem).GetProperties()
+        .Where(p => p.PropertyType == typeof(string) && p.Name != "InventoryGroup")
+        .Select(p => p.Name).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplates();
+    }
+
+    private async Task LoadTemplates()
+    {
+        templates = await TemplateService.GetTemplatesAsync();
+    }
+
+    private void CreateNewTemplate()
+    {
+        editingTemplate = new InventoryTemplate { Name = "New Template" };
+        currentMappings = new List<SharedColumnMapping> { new SharedColumnMapping { Header = "Name", Property = "Name" } };
+    }
+
+    private void EditTemplate(InventoryTemplate t)
+    {
+        editingTemplate = t;
+        try 
+        {
+            currentMappings = JsonSerializer.Deserialize<List<SharedColumnMapping>>(t.MappingsJson) ?? new();
+        }
+        catch 
+        {
+            currentMappings = new();
+        }
+    }
+
+    private void AddMapping()
+    {
+        var usedProps = currentMappings.Select(m => m.Property).ToList();
+        var availableProp = itemProperties.FirstOrDefault(p => !usedProps.Contains(p));
+        if (availableProp == null) return;
+        
+        currentMappings.Add(new SharedColumnMapping { Header = "New Column", Property = availableProp });
+    }
+
+    private void RemoveMapping(SharedColumnMapping m)
+    {
+        currentMappings.Remove(m);
+    }
+
+    private async Task SaveTemplate()
+    {
+        if (editingTemplate != null)
+        {
+            editingTemplate.MappingsJson = JsonSerializer.Serialize(currentMappings);
+            await TemplateService.SaveTemplateAsync(editingTemplate);
+            await LoadTemplates();
+            editingTemplate = null;
+        }
+    }
+
+    private async Task DeleteTemplate()
+    {
+        if (editingTemplate != null && editingTemplate.Id != 0)
+        {
+            await TemplateService.DeleteTemplateAsync(editingTemplate.Id);
+            await LoadTemplates();
+            editingTemplate = null;
+        }
+    }
+
+
+}

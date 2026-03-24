@@ -12,7 +12,17 @@ public class InventoryGroup
     [MaxLength(500)]
     public string? Description { get; set; }
 
+    public int? InventoryTemplateId { get; set; }
+    public InventoryTemplate? InventoryTemplate { get; set; }
+
+    /// <summary>
+    /// Stores per-group column widths and visibility: { "Name": 150, "IP": 100 }
+    /// </summary>
+    public string? ColumnSettingsJson { get; set; }
+
     public DateTime CreatedOn { get; set; } = DateTime.UtcNow;
+
+    public bool IsDeleted { get; set; } = false;
 
     public List<InventoryItem> Items { get; set; } = new();
 }
