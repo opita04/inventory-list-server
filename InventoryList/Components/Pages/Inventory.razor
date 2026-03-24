@@ -1,0 +1,352 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IDbContextFactory<InventoryDbContext> DbFactory
+
+<div class="d-flex vh-100">
+    @* ───── LEFT SIDEBAR ───── *@
+    <div class="bg-dark text-white p-3 d-flex flex-column" style="width:250px; min-width:250px;">
+        <h5 class="mb-3"><i class="bi bi-server"></i> Inventory Groups</h5>
+
+        <div class="input-group input-group-sm mb-3">
+            <input @bind="newGroupName" @bind:event="oninput" class="form-control" placeholder="New group name..." />
+            <button class="btn btn-success" @onclick="AddGroup" disabled="@string.IsNullOrWhiteSpace(newGroupName)">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+        </div>
+
+        <div class="list-group list-group-flush overflow-auto flex-grow-1">
+            @foreach (var g in groups)
+            {
+                <button class="list-group-item list-group-item-action @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary"
+                        @onclick="() => SelectGroup(g.Id)">
+                    @g.Name
+                    <span class="badge bg-secondary float-end">@g.Items.Count</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    @* ───── MAIN AREA ───── *@
+    <div class="flex-grow-1 d-flex flex-column overflow-hidden">
+        @if (selectedGroupId > 0)
+        {
+            <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
+                <h4 class="mb-0">@selectedGroupName</h4>
+                <div>
+                    <button class="btn btn-primary btn-sm me-2" @onclick="OpenBulkAddModal">
+                        <i class="bi bi-clipboard-data"></i> Bulk Add (Excel Paste)
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" @onclick="DeleteGroup">
+                        <i class="bi bi-trash"></i> Delete Group
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-grow-1 overflow-auto p-3">
+                <Grid @ref="grid" TItem="InventoryItem"
+                      Class="table table-striped table-bordered table-sm"
+                      Data="items"
+                      AllowFiltering="true"
+                      AllowSorting="true"
+                      Responsive="true">
+
+                    <GridColumn TItem="InventoryItem" HeaderText="Name" PropertyName="Name" SortKeySelector="item => item.Name" FilterTextboxWidth="120">
+                        @context.Name
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Notes" PropertyName="Notes" SortKeySelector="item => item.Notes" FilterTextboxWidth="120">
+                        @context.Notes
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="IP" PropertyName="IP" SortKeySelector="item => item.IP" FilterTextboxWidth="100">
+                        @context.IP
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Domain" PropertyName="Domain" SortKeySelector="item => item.Domain" FilterTextboxWidth="120">
+                        @context.Domain
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Onboarded" PropertyName="Onboarded" SortKeySelector="item => item.Onboarded" FilterTextboxWidth="100">
+                        @context.Onboarded
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Recovery Process" PropertyName="RecoveryProcess" SortKeySelector="item => item.RecoveryProcess" FilterTextboxWidth="120">
+                        @context.RecoveryProcess
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="RAM" PropertyName="RAM" SortKeySelector="item => item.RAM" FilterTextboxWidth="80">
+                        @context.RAM
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Cores" PropertyName="Cores" SortKeySelector="item => item.Cores" FilterTextboxWidth="80">
+                        @context.Cores
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Version" PropertyName="Version" SortKeySelector="item => item.Version" FilterTextboxWidth="100">
+                        @context.Version
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Edition" PropertyName="Edition" SortKeySelector="item => item.Edition" FilterTextboxWidth="100">
+                        @context.Edition
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Full Version" PropertyName="FullVersion" SortKeySelector="item => item.FullVersion" FilterTextboxWidth="120">
+                        @context.FullVersion
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="CU Version" PropertyName="CUVersion" SortKeySelector="item => item.CUVersion" FilterTextboxWidth="100">
+                        @context.CUVersion
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="KB Version" PropertyName="KBVersion" SortKeySelector="item => item.KBVersion" FilterTextboxWidth="100">
+                        @context.KBVersion
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Last Patched On" PropertyName="LastPatchedOn" SortKeySelector="item => item.LastPatchedOn" FilterTextboxWidth="120">
+                        @context.LastPatchedOn
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Environment" PropertyName="Environment" SortKeySelector="item => item.Environment" FilterTextboxWidth="100">
+                        @context.Environment
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="OS" PropertyName="OS" SortKeySelector="item => item.OS" FilterTextboxWidth="100">
+                        @context.OS
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Product" PropertyName="Product" SortKeySelector="item => item.Product" FilterTextboxWidth="120">
+                        @context.Product
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Owner" PropertyName="Owner" SortKeySelector="item => item.Owner" FilterTextboxWidth="120">
+                        @context.Owner
+                    </GridColumn>
+                    <GridColumn TItem="InventoryItem" HeaderText="Status Notes" PropertyName="StatusNotes" SortKeySelector="item => item.StatusNotes" FilterTextboxWidth="120">
+                        @context.StatusNotes
+                    </GridColumn>
+                </Grid>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex align-items-center justify-content-center flex-grow-1 text-muted">
+                <div class="text-center">
+                    <i class="bi bi-arrow-left-circle" style="font-size:3rem;"></i>
+                    <h5 class="mt-3">Select or create an Inventory Group to get started</h5>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@* ───── BULK ADD MODAL ───── *@
+<Modal @ref="bulkModal" Title="Bulk Add — Paste from Excel" Size="ModalSize.ExtraLarge">
+    <BodyTemplate>
+        @if (!showPreview)
+        {
+            <div class="alert alert-info py-2 mb-3">
+                <i class="bi bi-info-circle"></i>
+                Copy rows from Excel and paste below. Columns must be <strong>tab-separated</strong> in this exact order:
+            </div>
+
+            <div class="table-responsive mb-3">
+                <table class="table table-sm table-bordered mb-0" style="font-size: 0.78rem;">
+                    <thead class="table-dark">
+                        <tr>
+                            @foreach (var h in ExcelPasteParser.ColumnHeaders)
+                            {
+                                <th class="text-nowrap px-2">@h</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            @foreach (var h in ExcelPasteParser.ColumnHeaders)
+                            {
+                                <td class="text-muted px-2" style="font-size:0.7rem;">@($"Col {Array.IndexOf(ExcelPasteParser.ColumnHeaders, h) + 1}")</td>
+                            }
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <textarea @bind="pastedText" class="form-control font-monospace" rows="12"
+                      placeholder="Paste your Excel rows here (Ctrl+V)..."></textarea>
+
+            @if (!string.IsNullOrEmpty(parseError))
+            {
+                <div class="alert alert-danger mt-2 py-1">@parseError</div>
+            }
+        }
+        else
+        {
+            <div class="alert alert-success py-2">
+                <i class="bi bi-check-circle"></i> Parsed <strong>@parsedItems.Count</strong> row(s). Review below then click <strong>Save to Database</strong>.
+            </div>
+
+            <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
+                <table class="table table-sm table-striped table-bordered" style="font-size:0.78rem;">
+                    <thead class="table-dark sticky-top">
+                        <tr>
+                            <th>#</th>
+                            @foreach (var h in ExcelPasteParser.ColumnHeaders)
+                            {
+                                <th class="text-nowrap">@h</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int i = 0; i < parsedItems.Count; i++)
+                        {
+                            var item = parsedItems[i];
+                            <tr>
+                                <td>@(i + 1)</td>
+                                <td>@item.Name</td>
+                                <td>@item.Notes</td>
+                                <td>@item.IP</td>
+                                <td>@item.Domain</td>
+                                <td>@item.Onboarded</td>
+                                <td>@item.RecoveryProcess</td>
+                                <td>@item.RAM</td>
+                                <td>@item.Cores</td>
+                                <td>@item.Version</td>
+                                <td>@item.Edition</td>
+                                <td>@item.FullVersion</td>
+                                <td>@item.CUVersion</td>
+                                <td>@item.KBVersion</td>
+                                <td>@item.LastPatchedOn</td>
+                                <td>@item.Environment</td>
+                                <td>@item.OS</td>
+                                <td>@item.Product</td>
+                                <td>@item.Owner</td>
+                                <td>@item.StatusNotes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </BodyTemplate>
+    <FooterTemplate>
+        @if (!showPreview)
+        {
+            <Button Color="ButtonColor.Secondary" @onclick="CloseBulkModal">Cancel</Button>
+            <Button Color="ButtonColor.Primary" @onclick="ParsePastedData" Disabled="@string.IsNullOrWhiteSpace(pastedText)">
+                <i class="bi bi-eye"></i> Preview
+            </Button>
+        }
+        else
+        {
+            <Button Color="ButtonColor.Secondary" @onclick="BackToEdit">
+                <i class="bi bi-arrow-left"></i> Back to Edit
+            </Button>
+            <Button Color="ButtonColor.Success" @onclick="SaveParsedItems">
+                <i class="bi bi-database-add"></i> Save to Database (@parsedItems.Count rows)
+            </Button>
+        }
+    </FooterTemplate>
+</Modal>
+
+@code {
+    // ── State ──
+    private List<InventoryGroup> groups = new();
+    private List<InventoryItem> items = new();
+    private int selectedGroupId;
+    private string selectedGroupName = "";
+    private string newGroupName = "";
+
+    // ── Bulk Add ──
+    private Modal bulkModal = default!;
+    private Grid<InventoryItem> grid = default!;
+    private string pastedText = "";
+    private string parseError = "";
+    private bool showPreview;
+    private List<InventoryItem> parsedItems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGroups();
+    }
+
+    // ── Group Operations ──
+
+    private async Task LoadGroups()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        groups = await db.InventoryGroups
+            .Include(g => g.Items)
+            .OrderBy(g => g.Name)
+            .ToListAsync();
+    }
+
+    private async Task AddGroup()
+    {
+        if (string.IsNullOrWhiteSpace(newGroupName)) return;
+
+        using var db = await DbFactory.CreateDbContextAsync();
+        var group = new InventoryGroup { Name = newGroupName.Trim() };
+        db.InventoryGroups.Add(group);
+        await db.SaveChangesAsync();
+
+        newGroupName = "";
+        await LoadGroups();
+        await SelectGroup(group.Id);
+    }
+
+    private async Task SelectGroup(int groupId)
+    {
+        selectedGroupId = groupId;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var group = await db.InventoryGroups
+            .Include(g => g.Items)
+            .FirstOrDefaultAsync(g => g.Id == groupId);
+
+        if (group is not null)
+        {
+            selectedGroupName = group.Name;
+            items = group.Items.OrderBy(i => i.Name).ToList();
+        }
+    }
+
+    private async Task DeleteGroup()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var group = await db.InventoryGroups.FindAsync(selectedGroupId);
+        if (group is not null)
+        {
+            db.InventoryGroups.Remove(group);
+            await db.SaveChangesAsync();
+        }
+
+        selectedGroupId = 0;
+        selectedGroupName = "";
+        items = new();
+        await LoadGroups();
+    }
+
+    // ── Bulk Add Operations ──
+
+    private async Task OpenBulkAddModal()
+    {
+        pastedText = "";
+        parseError = "";
+        showPreview = false;
+        parsedItems = new();
+        await bulkModal.ShowAsync();
+    }
+
+    private async Task CloseBulkModal() => await bulkModal.HideAsync();
+
+    private void ParsePastedData()
+    {
+        parseError = "";
+        parsedItems = ExcelPasteParser.Parse(pastedText, selectedGroupId);
+
+        if (parsedItems.Count == 0)
+        {
+            parseError = "No data rows found. Make sure you copied tab-separated rows from Excel.";
+            return;
+        }
+
+        showPreview = true;
+    }
+
+    private void BackToEdit()
+    {
+        showPreview = false;
+    }
+
+    private async Task SaveParsedItems()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.InventoryItems.AddRange(parsedItems);
+        await db.SaveChangesAsync();
+
+        await bulkModal.HideAsync();
+        await SelectGroup(selectedGroupId);
+        await LoadGroups();
+    }
+}
