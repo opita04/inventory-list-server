@@ -25,15 +25,17 @@
 
         @if (!isSidebarCollapsed)
         {
-            <div class="input-group input-group-sm mb-3">
-                <input @bind="newGroupName" @bind:event="oninput" class="form-control" placeholder="New group..." />
-                <select @bind="newGroupTemplateId" class="form-select form-select-sm border-secondary" style="max-width:110px;" title="Select Template">
-                    <option value="">Blank</option>
-                    @foreach (var t in allTemplates) { <option value="@t.Id">@t.Name</option> }
-                </select>
-                <button class="btn btn-success" @onclick="AddGroup" disabled="@string.IsNullOrWhiteSpace(newGroupName)">
-                    <i class="bi bi-plus-lg"></i>
-                </button>
+            <div class="mb-3 px-2">
+                <input @bind="newGroupName" @bind:event="oninput" class="form-control form-control-sm mb-1" placeholder="New Group Name..." />
+                <div class="d-flex gap-1">
+                    <select @bind="newGroupTemplateId" class="form-select form-select-sm" title="Apply Template Blueprint">
+                        <option value="">No Template (Blank)</option>
+                        @foreach (var t in allTemplates) { <option value="@t.Id">@t.Name</option> }
+                    </select>
+                    <button class="btn btn-sm btn-success px-3" @onclick="AddGroup" disabled="@string.IsNullOrWhiteSpace(newGroupName)">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                </div>
             </div>
         }
 
@@ -516,8 +518,12 @@
         bool success = await JS.InvokeAsync<bool>("gridUtils.copyToClipboard", sb.ToString());
         if (success)
         {
-            // Optional: Show a brief toast or success state if needed
+            await JS.InvokeVoidAsync("console.log", "Successfully copied " + items.Count + " items to clipboard.");
             Logger.LogInformation("Grid data copied to clipboard.");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("console.error", "Failed to copy to clipboard.");
         }
     }
 
