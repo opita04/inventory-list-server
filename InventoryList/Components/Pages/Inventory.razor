@@ -27,7 +27,7 @@
         {
             <div class="input-group input-group-sm mb-3">
                 <input @bind="newGroupName" @bind:event="oninput" class="form-control" placeholder="New group..." />
-                <select @bind="newGroupTemplateId" class="form-select form-select-sm border-secondary bg-dark text-white" style="max-width:85px;" title="Select Template">
+                <select @bind="newGroupTemplateId" class="form-select form-select-sm border-secondary" style="max-width:110px;" title="Select Template">
                     <option value="">Blank</option>
                     @foreach (var t in allTemplates) { <option value="@t.Id">@t.Name</option> }
                 </select>
