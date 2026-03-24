@@ -483,6 +483,5 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
- #   C u s t o m   e x c l u s i o n s 
- d o c s / s u p e r p o w e r s /  
- 
+# Custom exclusions
+docs/superpowers/
