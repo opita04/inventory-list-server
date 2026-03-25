@@ -1,7 +1,9 @@
 using InventoryList.Components;
 using InventoryList.Data;
+using InventoryList.Models;
 using InventoryList.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,22 +19,63 @@ builder.Services.AddDbContextFactory<InventoryDbContext>(options =>
 
 var app = builder.Build();
 
+// ── Built-in SQL Server template (always synced from code) ──
+var sqlServerMappings = new List<SharedColumnMapping>
+{
+    new() { Header = "Name",              Property = "Name" },
+    new() { Header = "Notes/Status",      Property = "Notes" },
+    new() { Header = "IP",                Property = "IP" },
+    new() { Header = "Domain",            Property = "Domain" },
+    new() { Header = "Onboarded",         Property = "Onboarded" },
+    new() { Header = "Recovery Process",  Property = "RecoveryProcess" },
+    new() { Header = "RAM",               Property = "RAM" },
+    new() { Header = "Cores",             Property = "Cores" },
+    new() { Header = "Version",           Property = "Version",
+        SourceProperty = "FullVersion",   ExtractRegex = @"Microsoft SQL Server (\d{4})" },
+    new() { Header = "Edition",           Property = "Edition",
+        SourceProperty = "FullVersion",   ExtractRegex = @"(Enterprise Edition|Standard Edition|Developer Edition|Express Edition|Web Edition)" },
+    new() { Header = "Full Version",      Property = "FullVersion" },
+    new() { Header = "CU Version",        Property = "CUVersion",
+        SourceProperty = "FullVersion",   ExtractRegex = @"(RTM-CU\d+|CU\d+)" },
+    new() { Header = "KB Version",        Property = "KBVersion",
+        SourceProperty = "FullVersion",   ExtractRegex = @"(KB\d+)" },
+    new() { Header = "Last Patched On",   Property = "LastPatchedOn" },
+    new() { Header = "Environment",       Property = "Environment" },
+    new() { Header = "OS",                Property = "OS",
+        SourceProperty = "FullVersion",   ExtractRegex = @"on (Windows Server \d{4}\s*\w*)" },
+    new() { Header = "Product",           Property = "Product" },
+    new() { Header = "Owner",             Property = "Owner" },
+    new() { Header = "Status Notes",      Property = "StatusNotes" },
+};
+var sqlServerMappingsJson = JsonSerializer.Serialize(sqlServerMappings);
+
 // Auto-create / migrate the database on startup
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
     db.Database.EnsureCreated();
 
-    if (!db.InventoryTemplates.Any(t => t.Name == "SQL Server" || t.Name == "Original Default List"))
+    // Ensure InventoryFolders table exists (for existing databases)
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS InventoryFolders (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Name TEXT NOT NULL,
+            SortOrder INTEGER NOT NULL DEFAULT 0,
+            IsDeleted INTEGER NOT NULL DEFAULT 0,
+            CreatedOn TEXT NOT NULL DEFAULT (datetime('now'))
+        )");
+    // Ensure InventoryFolderId column exists on InventoryGroups
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE InventoryGroups ADD COLUMN InventoryFolderId INTEGER REFERENCES InventoryFolders(Id) ON DELETE SET NULL"); }
+    catch { /* column already exists */ }
+
+    // Seed only: create the SQL Server template if it doesn't exist, never overwrite user edits
+    var existing = db.InventoryTemplates.FirstOrDefault(t => t.Name == "SQL Server");
+    if (existing == null)
     {
-        var mappings = InventoryList.Services.ExcelPasteParser.DefaultColumnHeaders
-            .Select(h => new { Header = h, Property = h })
-            .ToList();
-        
-        db.InventoryTemplates.Add(new InventoryList.Models.InventoryTemplate
+        db.InventoryTemplates.Add(new InventoryTemplate
         {
             Name = "SQL Server",
-            MappingsJson = System.Text.Json.JsonSerializer.Serialize(mappings)
+            MappingsJson = sqlServerMappingsJson
         });
         db.SaveChanges();
     }

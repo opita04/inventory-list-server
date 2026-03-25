@@ -4,8 +4,10 @@
 @using InventoryList.Services
 @using Microsoft.EntityFrameworkCore
 @using System.Text.Json
+@using System.Text.RegularExpressions
 @using Microsoft.Extensions.Logging
 @using BlazorBootstrap
+@using Microsoft.AspNetCore.Components.Forms
 @inject IDbContextFactory<InventoryDbContext> DbFactory
 @inject ITemplateService TemplateService
 @inject IJSRuntime JS
@@ -17,7 +19,7 @@
          style="width:@(isSidebarCollapsed ? "60px" : "250px"); min-width:@(isSidebarCollapsed ? "60px" : "250px");">
         
         <div class="d-flex align-items-center justify-content-between mb-3 overflow-hidden">
-            @if (!isSidebarCollapsed) { <h5 class="mb-0 text-nowrap"><i class="bi bi-server"></i> Inventory Groups</h5> }
+            @if (!isSidebarCollapsed) { <h5 class="mb-0 text-nowrap" style="cursor:pointer;" @onclick="DeselectGroup" title="Back to home"><i class="bi bi-server"></i> Inventory Groups</h5> }
             <button class="btn btn-sm btn-outline-light border-0" @onclick="ToggleSidebar">
                 <i class="bi @(isSidebarCollapsed ? "bi-text-indent-left" : "bi-text-indent-right")"></i>
             </button>
@@ -36,31 +38,133 @@
                         <i class="bi bi-plus-lg"></i>
                     </button>
                 </div>
+                @* Folder creation *@
+                <div class="d-flex gap-1 mt-1">
+                    <input @bind="newFolderName" @bind:event="oninput" class="form-control form-control-sm" placeholder="New Folder..." />
+                    <button class="btn btn-sm btn-outline-light px-2" @onclick="AddFolder" disabled="@string.IsNullOrWhiteSpace(newFolderName)" title="Create Folder">
+                        <i class="bi bi-folder-plus"></i>
+                    </button>
+                </div>
             </div>
         }
 
         <div class="list-group list-group-flush overflow-auto flex-grow-1">
-            @foreach (var g in groups)
+            @* ── Ungrouped (root-level) groups ── *@
+            @foreach (var g in groups.Where(g => g.InventoryFolderId == null))
             {
-                <button class="list-group-item list-group-item-action @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary px-2"
-                        title="@g.Name"
-                        @onclick="() => SelectGroup(g.Id)">
-                    <div class="d-flex align-items-center justify-content-between">
-                        @if (isSidebarCollapsed)
-                        {
-                            <span class="badge bg-secondary">@g.Name.FirstOrDefault()</span>
-                        }
-                        else
-                        {
-                            <span class="text-truncate me-2">@g.Name</span>
-                            <span class="badge bg-secondary font-monospace" style="font-size: 0.65rem;">@g.Items.Count</span>
-                        }
-                    </div>
-                </button>
+                <div class="d-flex align-items-center sidebar-group-item">
+                    <button class="list-group-item list-group-item-action flex-grow-1 @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary px-2"
+                            title="@g.Name"
+                            @onclick="() => SelectGroup(g.Id)">
+                        <div class="d-flex align-items-center justify-content-between">
+                            @if (isSidebarCollapsed)
+                            {
+                                <span class="badge bg-secondary">@g.Name.FirstOrDefault()</span>
+                            }
+                            else
+                            {
+                                <span class="text-truncate me-2">@g.Name</span>
+                                <span class="badge bg-secondary font-monospace" style="font-size: 0.65rem;">@g.Items.Count</span>
+                            }
+                        </div>
+                    </button>
+                    @if (!isSidebarCollapsed && folders.Any())
+                    {
+                        <div class="dropdown">
+                            <button class="btn btn-sm text-white border-0 px-1 sidebar-move-btn" data-bs-toggle="dropdown" title="Move to folder">
+                                <i class="bi bi-folder-symlink" style="font-size:0.7rem;"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-dark" style="font-size:0.78rem;">
+                                @foreach (var f in folders)
+                                {
+                                    var folderId = f.Id;
+                                    <li><button class="dropdown-item" @onclick="() => MoveGroupToFolder(g.Id, folderId)"><i class="bi bi-folder me-1"></i>@f.Name</button></li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Folders with their groups ── *@
+            @foreach (var folder in folders)
+            {
+                var f = folder;
+                var isOpen = !folderCollapseState.GetValueOrDefault(f.Id, false);
+                var folderGroups = groups.Where(g => g.InventoryFolderId == f.Id).ToList();
+
+                <div class="folder-header d-flex align-items-center px-2 py-1 text-white-50 border-secondary"
+                     style="cursor:pointer; font-size:0.75rem; background:rgba(255,255,255,0.05);"
+                     @onclick="() => ToggleFolder(f.Id)">
+                    <i class="bi @(isOpen ? "bi-chevron-down" : "bi-chevron-right") me-1" style="font-size:0.65rem;"></i>
+                    <i class="bi @(isOpen ? "bi-folder2-open" : "bi-folder2") me-1"></i>
+                    @if (editingFolderId == f.Id)
+                    {
+                        <input class="form-control form-control-sm bg-transparent text-white border-0 p-0"
+                               style="font-size:0.75rem; box-shadow:none;"
+                               value="@f.Name" autofocus
+                               @onclick:stopPropagation="true"
+                               @onblur="() => editingFolderId = null"
+                               @onchange="@(async e => { await RenameFolder(f.Id, e.Value?.ToString()); editingFolderId = null; })" />
+                    }
+                    else
+                    {
+                        <span class="text-truncate flex-grow-1" @ondblclick="() => editingFolderId = f.Id" @ondblclick:stopPropagation="true">@f.Name</span>
+                    }
+                    <span class="badge bg-secondary font-monospace me-1" style="font-size:0.55rem;">@folderGroups.Count</span>
+                    <button class="btn btn-sm text-white-50 border-0 p-0" style="font-size:0.65rem;"
+                            title="Delete folder" @onclick="() => DeleteFolder(f.Id)" @onclick:stopPropagation="true">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+
+                @if (isOpen)
+                {
+                    @foreach (var g in folderGroups)
+                    {
+                        <div class="d-flex align-items-center sidebar-group-item">
+                            <button class="list-group-item list-group-item-action flex-grow-1 @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary px-2"
+                                    style="padding-left: 24px !important;"
+                                    title="@g.Name"
+                                    @onclick="() => SelectGroup(g.Id)">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span class="text-truncate me-2">@g.Name</span>
+                                    <span class="badge bg-secondary font-monospace" style="font-size: 0.65rem;">@g.Items.Count</span>
+                                </div>
+                            </button>
+                            <div class="dropdown">
+                                <button class="btn btn-sm text-white border-0 px-1 sidebar-move-btn" data-bs-toggle="dropdown" title="Move to folder">
+                                    <i class="bi bi-folder-symlink" style="font-size:0.7rem;"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-dark" style="font-size:0.78rem;">
+                                    <li><button class="dropdown-item" @onclick="() => MoveGroupToFolder(g.Id, null)"><i class="bi bi-dash-circle me-1"></i>No Folder</button></li>
+                                    @foreach (var otherFolder in folders.Where(of => of.Id != f.Id))
+                                    {
+                                        var targetId = otherFolder.Id;
+                                        <li><button class="dropdown-item" @onclick="() => MoveGroupToFolder(g.Id, targetId)"><i class="bi bi-folder me-1"></i>@otherFolder.Name</button></li>
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    }
+                }
             }
         </div>
 
         <div class="mt-auto pt-3 border-top border-secondary overflow-hidden">
+            @if (!isSidebarCollapsed)
+            {
+                <div class="d-flex align-items-center px-2 py-1 text-white-50" style="font-size:0.7rem;">
+                    <i class="bi bi-zoom-out me-1"></i>
+                    <input type="range" class="form-range form-range-sm flex-grow-1" style="height:12px;"
+                           min="50" max="130" step="5"
+                           value="@zoomLevel"
+                           @onchange="OnZoomChanged" title="Zoom: @(zoomLevel)%" />
+                    <i class="bi bi-zoom-in ms-1"></i>
+                    <button class="btn btn-sm text-white-50 border-0 p-0 ms-1" style="font-size:0.6rem;"
+                            @onclick="ResetZoom" title="Reset to 100%">@(zoomLevel)%</button>
+                </div>
+            }
             <a class="nav-link text-white p-2 d-flex align-items-center" href="/templates" title="Manage Templates">
                 <i class="bi bi-gear me-2"></i> @(!isSidebarCollapsed ? "Templates" : "")
             </a>
@@ -71,25 +175,44 @@
     </div>
 
     @* ───── MAIN AREA ───── *@
-    <div class="flex-grow-1 d-flex flex-column overflow-hidden">
+    <div class="flex-grow-1 d-flex flex-column overflow-hidden" style="zoom: @(zoomLevel)%;">
         @if (selectedGroupId > 0)
         {
             <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
-                <div class="d-flex align-items-center">
+                <div class="d-flex align-items-center flex-grow-1">
                     <h4 class="mb-0 me-3">@selectedGroupName</h4>
+                    <div class="flex-grow-1 ms-2" style="max-width: 350px;">
+                        <div class="input-group input-group-sm rounded-pill border overflow-hidden bg-light shadow-sm">
+                            <span class="input-group-text border-0 bg-transparent text-muted px-3"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control border-0 bg-transparent ps-0" placeholder="Global search..." 
+                                   @bind="searchTerm" @bind:event="oninput" />
+                            @if (!string.IsNullOrEmpty(searchTerm))
+                            {
+                                <button class="btn btn-sm text-muted border-0 bg-transparent px-3" @onclick="@(() => searchTerm = "")">
+                                    <i class="bi bi-x-circle-fill"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
                 </div>
                 <div>
-                    <button class="btn btn-outline-secondary btn-sm me-2" @onclick="AddColumnInline">
-                        <i class="bi bi-layout-three-columns"></i> Add Column
+                    <button class="btn btn-sm btn-outline-secondary me-2" @onclick="OpenColumnSettingsModal" title="Column Settings (Extraction Rules)">
+                        <i class="bi bi-gear"></i>
                     </button>
                     <button class="btn btn-sm btn-outline-success border-0 me-2" @onclick="CopyGridToClipboard" title="Copy Grid to Excel (TSV)">
                         <i class="bi bi-clipboard-data"></i> Copy to Excel
+                    </button>
+                    <button class="btn btn-success btn-sm me-2" @onclick="AddColumnInline">
+                        <i class="bi bi-layout-three-columns"></i> Add Column
                     </button>
                     <button class="btn btn-success btn-sm me-2" @onclick="OpenSingleAddModal">
                         <i class="bi bi-plus-lg"></i> Add Row
                     </button>
                     <button class="btn btn-primary btn-sm me-2" @onclick="OpenBulkAddModal">
                         <i class="bi bi-clipboard-data"></i> Bulk Add
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary me-2" @onclick="OpenImportModal" title="Import from Excel or CSV">
+                        <i class="bi bi-file-earmark-arrow-up"></i> Import
                     </button>
                     <button class="btn btn-outline-danger btn-sm" @onclick="DeleteGroup" title="Delete Group">
                         <i class="bi bi-trash"></i>
@@ -101,15 +224,15 @@
                 <Grid @ref="grid" @key="gridRev" TItem="InventoryItem"
                       Id="inventoryGrid"
                       Class="table table-striped table-bordered table-sm compact-grid"
-                      Data="items"
-                      AllowFiltering="false"
+                      Data="itemsToShow"
+                      AllowFiltering="true"
                       AllowSorting="true"
                       Responsive="true">
                     
                     @foreach (var m in activeMappings)
                     {
                         var mapping = m;
-                        <GridColumn TItem="InventoryItem" PropertyName="@mapping.Property" Sortable="true" Filterable="false" SortKeySelector="@(i => GetValue(i, mapping.Property) as IComparable)">
+                        <GridColumn TItem="InventoryItem" PropertyName="@mapping.Property" Sortable="true" Filterable="true" SortKeySelector="@(i => GetValue(i, mapping.Property) as IComparable)">
                             <HeaderContent>
                                 @if (editingMapping == mapping)
                                 {
@@ -157,8 +280,12 @@
         {
             <div class="d-flex align-items-center justify-content-center flex-grow-1 text-muted">
                 <div class="text-center">
-                    <i class="bi bi-arrow-left-circle" style="font-size:3rem;"></i>
+                    <i class="bi bi-collection" style="font-size:3rem;"></i>
                     <h5 class="mt-3">Select or create an Inventory Group to get started</h5>
+                    <p class="small">Or import data from an existing spreadsheet</p>
+                    <button class="btn btn-outline-primary mt-2" @onclick="OpenImportModal">
+                        <i class="bi bi-file-earmark-arrow-up"></i> Import from Excel / CSV
+                    </button>
                 </div>
             </div>
         }
@@ -229,7 +356,10 @@
                                 <td>@(i + 1)</td>
                                 @foreach (var m in activeMappings)
                                 {
-                                    <td>@GetValue(item, m.Property)</td>
+                                    var val = GetValue(item, m.Property)?.ToString();
+                                    <td class="@(IsValueValid(val, m.ValidationRegex) ? "" : "bg-danger bg-opacity-25 text-danger fw-bold")">
+                                        @val
+                                    </td>
                                 }
                             </tr>
                         }
@@ -251,7 +381,8 @@
             <Button Color="ButtonColor.Secondary" @onclick="BackToEdit">
                 <i class="bi bi-arrow-left"></i> Back to Edit
             </Button>
-            <Button Color="ButtonColor.Success" @onclick="SaveParsedItems">
+            <Button Color="ButtonColor.Success" @onclick="SaveParsedItems" 
+                    Disabled="@(parsedItems.Any(item => activeMappings.Any(m => !IsValueValid(GetValue(item, m.Property)?.ToString(), m.ValidationRegex))))">
                 <i class="bi bi-save"></i> Save to Inventory (@parsedItems.Count rows)
             </Button>
         }
@@ -264,11 +395,17 @@
         <div class="row g-3">
             @foreach (var m in activeMappings)
             {
+                var mapping = m;
+                bool isInvalid = singleAddValidationErrors.ContainsKey(mapping.Property);
                 <div class="col-md-6">
-                    <label class="form-label form-label-sm mb-1 fw-bold">@m.Header</label>
-                    <input class="form-control form-control-sm" 
-                           value="@singleAddItemData.GetValueOrDefault(m.Property, "")"
-                           @onchange="@(e => UpdateSingleAddItemData(m.Property, e.Value?.ToString() ?? ""))" />
+                    <label class="form-label form-label-sm mb-1 fw-bold">@mapping.Header</label>
+                    <input class="form-control form-control-sm @(isInvalid ? "is-invalid" : "")" 
+                           value="@singleAddItemData.GetValueOrDefault(mapping.Property, "")"
+                           @onchange="@(e => { UpdateSingleAddItemData(mapping.Property, e.Value?.ToString() ?? ""); singleAddValidationErrors.Remove(mapping.Property); })" />
+                    @if (isInvalid)
+                    {
+                        <div class="invalid-feedback x-small">@singleAddValidationErrors[mapping.Property]</div>
+                    }
                 </div>
             }
         </div>
@@ -281,22 +418,319 @@
     </FooterTemplate>
 </Modal>
 
+@* ───── IMPORT FILE MODAL ───── *@
+<Modal @ref="importModal" Title="Import from Excel / CSV" Size="ModalSize.ExtraLarge">
+    <BodyTemplate>
+        @if (importSheets.Count == 0)
+        {
+            <div class="alert alert-info py-2 mb-3" style="font-size: 0.82rem;">
+                <i class="bi bi-info-circle"></i>
+                Upload an <strong>.xlsx</strong> or <strong>.csv</strong> file. Each Excel sheet becomes a new inventory group.
+                The first row is used as column headers.
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <InputFile OnChange="OnImportFileSelected" accept=".xlsx,.csv" class="form-control form-control-sm" style="max-width:400px;" />
+            </div>
+            @if (!string.IsNullOrEmpty(importError))
+            {
+                <div class="alert alert-danger mt-3 py-2" style="font-size:0.82rem;">
+                    <i class="bi bi-exclamation-triangle"></i> @importError
+                </div>
+            }
+        }
+        else
+        {
+            <div class="alert alert-success py-2 mb-3" style="font-size: 0.82rem;">
+                <i class="bi bi-check-circle"></i>
+                Found <strong>@importSheets.Count</strong> sheet(s). Choose a template for column matching or use auto-detect.
+            </div>
+
+            @for (int si = 0; si < importSheets.Count; si++)
+            {
+                var sheetIdx = si;
+                var sheet = importSheets[sheetIdx];
+                var config = importSheetConfigs[sheetIdx];
+                <div class="card mb-3">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                        <span class="fw-bold"><i class="bi bi-table"></i> @sheet.Name</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-primary">@sheet.Rows.Count rows</span>
+                            <select class="form-select form-select-sm" style="width:auto; min-width:160px;"
+                                    value="@config.SelectedTemplateId"
+                                    @onchange="@(e => OnImportTemplateChanged(sheetIdx, e.Value?.ToString()))">
+                                <option value="0">No Template (auto-detect)</option>
+                                @foreach (var t in allTemplates)
+                                {
+                                    <option value="@t.Id">@t.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body p-2">
+                        @if (config.SelectedTemplateId == 0)
+                        {
+                            <div class="text-muted small mb-1"><i class="bi bi-info-circle"></i> Columns will be auto-detected from the spreadsheet headers.</div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var col in config.ColumnMaps)
+                                {
+                                    <span class="badge bg-secondary">@col.SpreadsheetHeader</span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                        <table class="table table-sm table-bordered mb-0" style="font-size:0.78rem;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:40%">Spreadsheet Column</th>
+                                    <th style="width:40%">Maps To Template Column</th>
+                                    <th style="width:20%">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (int ci = 0; ci < config.ColumnMaps.Count; ci++)
+                                {
+                                    var colIdx = ci;
+                                    var col = config.ColumnMaps[colIdx];
+                                    <tr class="@(string.IsNullOrEmpty(col.TargetProperty) ? "table-warning" : "")">
+                                        <td>@col.SpreadsheetHeader</td>
+                                        <td>
+                                            <select class="form-select form-select-sm" style="font-size:0.78rem;"
+                                                    value="@col.TargetProperty"
+                                                    @onchange="@(e => { config.ColumnMaps[colIdx].TargetProperty = e.Value?.ToString() ?? ""; })">
+                                                <option value="">-- Skip --</option>
+                                                @foreach (var opt in config.AvailableProperties)
+                                                {
+                                                    <option value="@opt.Property">@opt.Header (@opt.Property)</option>
+                                                }
+                                            </select>
+                                        </td>
+                                        <td>
+                                            @if (string.IsNullOrEmpty(col.TargetProperty))
+                                            {
+                                                <span class="text-muted"><i class="bi bi-dash-circle"></i> Skipped</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-success"><i class="bi bi-check-circle"></i> Mapped</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </BodyTemplate>
+    <FooterTemplate>
+        @if (importSheets.Count > 0)
+        {
+            <Button Color="ButtonColor.Secondary" @onclick="ResetImport">
+                <i class="bi bi-arrow-left"></i> Back
+            </Button>
+        }
+        <Button Color="ButtonColor.Secondary" @onclick="CloseImportModal">Cancel</Button>
+        @if (importSheets.Count > 0)
+        {
+            <Button Color="ButtonColor.Success" @onclick="ExecuteImport" Disabled="importInProgress">
+                @if (importInProgress)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-download"></i> Import @importSheets.Count Group(s)
+            </Button>
+        }
+    </FooterTemplate>
+</Modal>
+
+@* ───── COLUMN SETTINGS MODAL ───── *@
+<Modal @ref="columnSettingsModal" Title="Column Settings — Extraction Rules" Size="ModalSize.ExtraLarge">
+    <BodyTemplate>
+        <div class="alert alert-info py-2 mb-3" style="font-size: 0.82rem;">
+            <i class="bi bi-info-circle"></i>
+            <strong>Auto-Extract:</strong> Set a <em>Source Column</em> and an <em>Extract Regex</em> to automatically pull values from one column into another.
+            Use a <strong>capturing group</strong> <code>(...)</code> to specify what to extract.
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0" style="font-size: 0.82rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>Column</th>
+                        <th>Validation Regex</th>
+                        <th>Source Column</th>
+                        <th>Extract Regex</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in activeMappings)
+                    {
+                        var mapping = m;
+                        <tr>
+                            <td class="fw-bold">@mapping.Header</td>
+                            <td><input @bind="mapping.ValidationRegex" class="form-control form-control-sm font-monospace" placeholder="e.g. ^\d+$" /></td>
+                            <td>
+                                <select @bind="mapping.SourceProperty" class="form-select form-select-sm">
+                                    <option value="">None</option>
+                                    @foreach (var other in activeMappings.Where(x => x.Property != mapping.Property))
+                                    {
+                                        <option value="@other.Property">@other.Header</option>
+                                    }
+                                </select>
+                            </td>
+                            <td><input @bind="mapping.ExtractRegex" class="form-control form-control-sm font-monospace" placeholder="e.g. (KB\s*\d+)" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-3 p-2 bg-light rounded" style="font-size: 0.78rem;">
+            <strong>Examples:</strong>
+            <table class="table table-sm table-borderless mb-0 mt-1" style="font-size: 0.78rem;">
+                <tr><td class="text-muted" style="width:200px;">KB number from version string</td><td><code>(KB\s*\d+)</code></td><td class="text-muted">"Windows 2025 KB 5024654" → <strong>KB 5024654</strong></td></tr>
+                <tr><td class="text-muted">Digits only from KB</td><td><code>KB\s*(\d+)</code></td><td class="text-muted">"KB 5024654" → <strong>5024654</strong></td></tr>
+                <tr><td class="text-muted">Year from string</td><td><code>(\d{4})</code></td><td class="text-muted">"Windows 2025 KB..." → <strong>2025</strong></td></tr>
+                <tr><td class="text-muted">First word</td><td><code>^(\w+)</code></td><td class="text-muted">"Windows 2025" → <strong>Windows</strong></td></tr>
+            </table>
+        </div>
+    </BodyTemplate>
+    <FooterTemplate>
+        <Button Color="ButtonColor.Secondary" @onclick="CloseColumnSettingsModal">Cancel</Button>
+        <Button Color="ButtonColor.Success" @onclick="SaveColumnSettings">
+            <i class="bi bi-save"></i> Save Settings
+        </Button>
+    </FooterTemplate>
+</Modal>
+
 @code {
     // ── State ──
     private List<InventoryGroup> groups = new();
     private List<InventoryItem> items = new();
     private List<InventoryTemplate> allTemplates = new();
+    private List<InventoryFolder> folders = new();
     private InventoryGroup? selectedGroup;
     private int selectedGroupId;
     private string selectedGroupName = "";
     private string newGroupName = "";
+    private string newFolderName = "";
     private int? newGroupTemplateId;
     private bool gridRev = false;
     private bool isSidebarCollapsed = false;
     private string currentSortProperty = "";
     private SortDirection currentSortDirection = SortDirection.None;
+    private string searchTerm = "";
+    private Dictionary<int, bool> folderCollapseState = new();
+    private int? editingFolderId = null;
+    private int zoomLevel = 100;
+
+    private List<InventoryItem> itemsToShow => string.IsNullOrEmpty(searchTerm) 
+        ? items 
+        : items.Where(i => activeMappings.Any(m => GetValue(i, m.Property)?.ToString()?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) == true)).ToList();
 
     private void ToggleSidebar() => isSidebarCollapsed = !isSidebarCollapsed;
+
+    private async Task OnZoomChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int val))
+        {
+            zoomLevel = val;
+            await JS.InvokeVoidAsync("localStorage.setItem", "app-zoom-level", zoomLevel.ToString());
+        }
+    }
+
+    private async Task ResetZoom()
+    {
+        zoomLevel = 100;
+        await JS.InvokeVoidAsync("localStorage.setItem", "app-zoom-level", "100");
+    }
+
+    private void DeselectGroup()
+    {
+        selectedGroup = null;
+        selectedGroupId = 0;
+        selectedGroupName = "";
+        items = new();
+        activeMappings = new();
+        gridRev = !gridRev;
+    }
+
+    // ── Folders ──
+    private async Task LoadFolders()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        folders = await db.InventoryFolders
+            .Where(f => !f.IsDeleted)
+            .OrderBy(f => f.SortOrder).ThenBy(f => f.Name)
+            .ToListAsync();
+    }
+
+    private async Task AddFolder()
+    {
+        if (string.IsNullOrWhiteSpace(newFolderName)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.InventoryFolders.Add(new InventoryFolder { Name = newFolderName.Trim() });
+        await db.SaveChangesAsync();
+        newFolderName = "";
+        await LoadFolders();
+    }
+
+    private async Task RenameFolder(int folderId, string? newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var folder = await db.InventoryFolders.FindAsync(folderId);
+        if (folder != null)
+        {
+            folder.Name = newName.Trim();
+            await db.SaveChangesAsync();
+            await LoadFolders();
+        }
+    }
+
+    private async Task DeleteFolder(int folderId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        // Unassign groups from this folder first
+        var folderGroups = await db.InventoryGroups.Where(g => g.InventoryFolderId == folderId).ToListAsync();
+        foreach (var g in folderGroups) g.InventoryFolderId = null;
+        var folder = await db.InventoryFolders.FindAsync(folderId);
+        if (folder != null) db.InventoryFolders.Remove(folder);
+        await db.SaveChangesAsync();
+        await LoadFolders();
+        await LoadGroups();
+    }
+
+    private async Task MoveGroupToFolder(int groupId, int? folderId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var group = await db.InventoryGroups.FindAsync(groupId);
+        if (group != null)
+        {
+            group.InventoryFolderId = folderId;
+            await db.SaveChangesAsync();
+            // Refresh local state
+            var localGroup = groups.FirstOrDefault(g => g.Id == groupId);
+            if (localGroup != null) localGroup.InventoryFolderId = folderId;
+        }
+    }
+
+    private async Task ToggleFolder(int folderId)
+    {
+        var current = folderCollapseState.GetValueOrDefault(folderId, false);
+        folderCollapseState[folderId] = !current;
+        await JS.InvokeVoidAsync("localStorage.setItem", $"folder-collapsed-{folderId}", (!current).ToString().ToLower());
+    }
+
+    private async Task LoadFolderCollapseState()
+    {
+        foreach (var f in folders)
+        {
+            var val = await JS.InvokeAsync<string>("localStorage.getItem", $"folder-collapsed-{f.Id}");
+            if (val == "true") folderCollapseState[f.Id] = true;
+        }
+    }
 
     private async Task SortColumn(string propertyName)
     {
@@ -329,14 +763,414 @@
     private bool showPreview;
     private List<InventoryItem> parsedItems = new();
 
+    // ── Column Settings ──
+    private Modal columnSettingsModal = default!;
+
+    private async Task OpenColumnSettingsModal() => await columnSettingsModal.ShowAsync();
+    private async Task CloseColumnSettingsModal() => await columnSettingsModal.HideAsync();
+    private async Task SaveColumnSettings()
+    {
+        await SaveGroupColumnSettings();
+        // Re-apply extractions to all items with new rules
+        foreach (var item in items) ApplyExtractions(item);
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.InventoryItems.UpdateRange(items);
+        await db.SaveChangesAsync();
+        gridRev = !gridRev;
+        ReinitGridAsync();
+        await columnSettingsModal.HideAsync();
+    }
+
+    // ── File Import ──
+    private Modal importModal = default!;
+    private List<ImportSheet> importSheets = new();
+    private List<ImportSheetConfig> importSheetConfigs = new();
+    private string importError = "";
+    private bool importInProgress = false;
+
+    private class ImportColumnMap
+    {
+        public string SpreadsheetHeader { get; set; } = "";
+        public string TargetProperty { get; set; } = "";
+    }
+
+    private class ImportSheetConfig
+    {
+        public int SelectedTemplateId { get; set; }
+        public List<ImportColumnMap> ColumnMaps { get; set; } = new();
+        public List<SharedColumnMapping> AvailableProperties { get; set; } = new();
+        public List<SharedColumnMapping>? TemplateMappings { get; set; }
+    }
+
+    private async Task OpenImportModal()
+    {
+        importSheets = new();
+        importSheetConfigs = new();
+        importError = "";
+        importInProgress = false;
+        await importModal.ShowAsync();
+    }
+
+    private async Task CloseImportModal() => await importModal.HideAsync();
+
+    private void ResetImport()
+    {
+        importSheets = new();
+        importSheetConfigs = new();
+        importError = "";
+    }
+
+    private List<SharedColumnMapping> GetAutoDetectProperties()
+    {
+        return typeof(InventoryItem).GetProperties()
+            .Where(p => p.PropertyType == typeof(string) && p.Name != "InventoryGroup")
+            .Select(p => new SharedColumnMapping { Header = p.Name, Property = p.Name })
+            .ToList();
+    }
+
+    private void BuildSheetConfigs()
+    {
+        importSheetConfigs = new();
+        foreach (var sheet in importSheets)
+        {
+            var config = new ImportSheetConfig();
+            var autoProps = GetAutoDetectProperties();
+            config.AvailableProperties = autoProps;
+
+            // Auto-map headers
+            var (mappings, _) = FileImportService.MapHeaders(sheet.Headers);
+            config.ColumnMaps = sheet.Headers.Select((h, i) =>
+            {
+                var mapped = i < mappings.Count ? mappings[i] : null;
+                return new ImportColumnMap
+                {
+                    SpreadsheetHeader = h,
+                    TargetProperty = mapped?.Property ?? ""
+                };
+            }).ToList();
+
+            importSheetConfigs.Add(config);
+        }
+    }
+
+    private void OnImportTemplateChanged(int sheetIdx, string? templateIdStr)
+    {
+        if (sheetIdx >= importSheetConfigs.Count) return;
+        var config = importSheetConfigs[sheetIdx];
+        var sheet = importSheets[sheetIdx];
+
+        int.TryParse(templateIdStr, out int templateId);
+        config.SelectedTemplateId = templateId;
+
+        if (templateId == 0)
+        {
+            // No template — auto-detect
+            config.AvailableProperties = GetAutoDetectProperties();
+            config.TemplateMappings = null;
+            var (mappings, _) = FileImportService.MapHeaders(sheet.Headers);
+            config.ColumnMaps = sheet.Headers.Select((h, i) =>
+            {
+                var mapped = i < mappings.Count ? mappings[i] : null;
+                return new ImportColumnMap { SpreadsheetHeader = h, TargetProperty = mapped?.Property ?? "" };
+            }).ToList();
+        }
+        else
+        {
+            // Template selected — use template columns as mapping targets
+            var template = allTemplates.FirstOrDefault(t => t.Id == templateId);
+            if (template != null)
+            {
+                try
+                {
+                    var tmplMappings = JsonSerializer.Deserialize<List<SharedColumnMapping>>(template.MappingsJson) ?? new();
+                    config.TemplateMappings = tmplMappings;
+                    config.AvailableProperties = tmplMappings;
+
+                    // Smart-match spreadsheet headers to template headers
+                    // Two passes: exact first, then fuzzy — longest match wins, track used
+                    var usedProps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var tempMaps = new List<ImportColumnMap>();
+
+                    // Pass 1: exact matches (header or property name, spaces stripped)
+                    foreach (var h in sheet.Headers)
+                    {
+                        var norm = h.Replace(" ", "");
+                        var exact = tmplMappings.FirstOrDefault(m =>
+                            !usedProps.Contains(m.Property) &&
+                            (string.Equals(m.Header, h, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(m.Property, norm, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(m.Header.Replace(" ", ""), norm, StringComparison.OrdinalIgnoreCase)));
+                        if (exact != null)
+                        {
+                            usedProps.Add(exact.Property);
+                            tempMaps.Add(new ImportColumnMap { SpreadsheetHeader = h, TargetProperty = exact.Property });
+                        }
+                        else
+                        {
+                            tempMaps.Add(new ImportColumnMap { SpreadsheetHeader = h, TargetProperty = "" });
+                        }
+                    }
+
+                    // Pass 2: fuzzy match unmatched headers — longest template header match wins
+                    for (int mi = 0; mi < tempMaps.Count; mi++)
+                    {
+                        if (!string.IsNullOrEmpty(tempMaps[mi].TargetProperty)) continue;
+                        var h = tempMaps[mi].SpreadsheetHeader;
+                        var fuzzy = tmplMappings
+                            .Where(m => !usedProps.Contains(m.Property) &&
+                                (h.Contains(m.Header, StringComparison.OrdinalIgnoreCase) ||
+                                 m.Header.Contains(h, StringComparison.OrdinalIgnoreCase)))
+                            .OrderByDescending(m => m.Header.Length)
+                            .FirstOrDefault();
+                        if (fuzzy != null)
+                        {
+                            usedProps.Add(fuzzy.Property);
+                            tempMaps[mi].TargetProperty = fuzzy.Property;
+                        }
+                    }
+
+                    config.ColumnMaps = tempMaps;
+                }
+                catch { /* fallback to empty */ }
+            }
+        }
+    }
+
+    private async Task OnImportFileSelected(InputFileChangeEventArgs e)
+    {
+        importError = "";
+        importSheets = new();
+        importSheetConfigs = new();
+        var file = e.File;
+
+        if (!FileImportService.IsAllowedExtension(file.Name))
+        {
+            importError = $"Unsupported file type \"{Path.GetExtension(file.Name)}\". Only .xlsx and .csv files are allowed.";
+            return;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(stream);
+            stream.Position = 0;
+
+            var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+            importSheets = ext == ".csv"
+                ? FileImportService.ParseCsv(stream, file.Name)
+                : FileImportService.ParseExcel(stream);
+
+            if (importSheets.Count == 0)
+                importError = "No data found in the file. Make sure the first row contains headers and there is at least one data row.";
+            else
+                BuildSheetConfigs();
+        }
+        catch (Exception ex)
+        {
+            importError = $"Failed to read file: {ex.Message}";
+        }
+    }
+
+    private async Task ExecuteImport()
+    {
+        if (importSheets.Count == 0) return;
+        importInProgress = true;
+        StateHasChanged();
+
+        try
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+
+            for (int i = 0; i < importSheets.Count; i++)
+            {
+                var sheet = importSheets[i];
+                var config = importSheetConfigs[i];
+
+                // Build final column mappings from user selections
+                List<SharedColumnMapping> finalMappings;
+                if (config.TemplateMappings != null)
+                {
+                    // Template mode: use template mappings but only for columns the user mapped
+                    finalMappings = config.ColumnMaps
+                        .Where(c => !string.IsNullOrEmpty(c.TargetProperty))
+                        .Select(c =>
+                        {
+                            var tmpl = config.TemplateMappings.FirstOrDefault(m => m.Property == c.TargetProperty);
+                            return tmpl != null
+                                ? new SharedColumnMapping
+                                  {
+                                      Header = tmpl.Header,
+                                      Property = tmpl.Property,
+                                      ValidationRegex = tmpl.ValidationRegex,
+                                      SourceProperty = tmpl.SourceProperty,
+                                      ExtractRegex = tmpl.ExtractRegex
+                                  }
+                                : new SharedColumnMapping { Header = c.SpreadsheetHeader, Property = c.TargetProperty };
+                        }).ToList();
+
+                    // Also add template columns not in the spreadsheet (for extraction targets)
+                    foreach (var tmpl in config.TemplateMappings)
+                    {
+                        if (!finalMappings.Any(m => m.Property == tmpl.Property))
+                        {
+                            finalMappings.Add(new SharedColumnMapping
+                            {
+                                Header = tmpl.Header,
+                                Property = tmpl.Property,
+                                ValidationRegex = tmpl.ValidationRegex,
+                                SourceProperty = tmpl.SourceProperty,
+                                ExtractRegex = tmpl.ExtractRegex
+                            });
+                        }
+                    }
+                }
+                else
+                {
+                    // Auto-detect mode
+                    finalMappings = config.ColumnMaps
+                        .Where(c => !string.IsNullOrEmpty(c.TargetProperty))
+                        .Select(c => new SharedColumnMapping { Header = c.SpreadsheetHeader, Property = c.TargetProperty })
+                        .ToList();
+                }
+
+                // Create group
+                var group = new InventoryGroup
+                {
+                    Name = sheet.Name,
+                    ColumnSettingsJson = JsonSerializer.Serialize(finalMappings),
+                    InventoryTemplateId = config.SelectedTemplateId > 0 ? config.SelectedTemplateId : null
+                };
+                db.InventoryGroups.Add(group);
+                await db.SaveChangesAsync();
+
+                // Build items — iterate ALL column maps to preserve index alignment with row data
+                var items = new List<InventoryItem>();
+                foreach (var row in sheet.Rows)
+                {
+                    var item = new InventoryItem { InventoryGroupId = group.Id };
+                    for (int ci = 0; ci < config.ColumnMaps.Count && ci < row.Length; ci++)
+                    {
+                        var target = config.ColumnMaps[ci].TargetProperty;
+                        if (string.IsNullOrEmpty(target)) continue; // skipped column
+                        var prop = typeof(InventoryItem).GetProperty(target);
+                        if (prop != null && prop.CanWrite)
+                            prop.SetValue(item, row[ci]);
+                    }
+                    items.Add(item);
+                }
+
+                // Apply extraction rules if template was used
+                if (config.TemplateMappings != null)
+                {
+                    foreach (var item in items)
+                    {
+                        foreach (var m in finalMappings.Where(m => !string.IsNullOrEmpty(m.SourceProperty) && !string.IsNullOrEmpty(m.ExtractRegex)))
+                        {
+                            var sourceVal = item.GetType().GetProperty(m.SourceProperty!)?.GetValue(item)?.ToString();
+                            if (!string.IsNullOrEmpty(sourceVal))
+                            {
+                                try
+                                {
+                                    var match = Regex.Match(sourceVal, m.ExtractRegex!);
+                                    if (match.Success)
+                                    {
+                                        var extracted = match.Groups.Count > 1 ? match.Groups[1].Value : match.Value;
+                                        item.GetType().GetProperty(m.Property)?.SetValue(item, extracted);
+                                    }
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+
+                db.InventoryItems.AddRange(items);
+                await db.SaveChangesAsync();
+            }
+
+            // Reload groups and select the first imported one
+            await LoadGroups();
+            var firstImported = groups.FirstOrDefault(g => g.Name == importSheets[0].Name);
+            if (firstImported != null)
+                await SelectGroup(firstImported.Id);
+
+            await importModal.HideAsync();
+        }
+        catch (Exception ex)
+        {
+            importError = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            importInProgress = false;
+        }
+    }
+
     // ── Single Add ──
     private Modal singleAddModal = default!;
     private Dictionary<string, string> singleAddItemData = new();
+    private Dictionary<string, string> singleAddValidationErrors = new();
+
+    private bool IsValueValid(string? value, string? regex)
+    {
+        if (string.IsNullOrEmpty(regex)) return true;
+        if (value == null) return false;
+        try 
+        {
+            return Regex.IsMatch(value, regex);
+        }
+        catch { return true; } // If regex is invalid, allow it (or handle as needed)
+    }
+
+    private void ApplyExtractions(InventoryItem item)
+    {
+        // Limit to 3 passes to avoid infinite loops but allow shallow chains
+        for (int pass = 0; pass < 3; pass++)
+        {
+            bool passChanged = false;
+            foreach (var m in activeMappings)
+            {
+                if (!string.IsNullOrEmpty(m.SourceProperty) && !string.IsNullOrEmpty(m.ExtractRegex))
+                {
+                    var sourceValue = GetValue(item, m.SourceProperty)?.ToString();
+                    if (sourceValue != null)
+                    {
+                        try 
+                        {
+                            var match = Regex.Match(sourceValue, m.ExtractRegex);
+                            if (match.Success)
+                            {
+                                var extractedValue = match.Groups.Count > 1 ? match.Groups[1].Value : match.Value;
+                                var currentVal = GetValue(item, m.Property)?.ToString();
+                                if (currentVal != extractedValue)
+                                {
+                                    SetValue(item, m.Property, extractedValue);
+                                    passChanged = true;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            if (!passChanged) break;
+        }
+    }
+
+    private void SetValue(InventoryItem item, string propertyName, string value)
+    {
+        var prop = item.GetType().GetProperty(propertyName);
+        if (prop != null && prop.CanWrite && prop.PropertyType == typeof(string))
+        {
+            prop.SetValue(item, value);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         using var db = await DbFactory.CreateDbContextAsync();
         allTemplates = await db.InventoryTemplates.Where(t => !t.IsDeleted).ToListAsync();
+        await LoadFolders();
         await LoadGroups();
     }
 
@@ -357,6 +1191,11 @@
             }
             catch (Exception ex) { Logger.LogWarning(ex, "Failed to load last group from local storage"); }
 
+            await LoadFolderCollapseState();
+            var zoomStr = await JS.InvokeAsync<string>("localStorage.getItem", "app-zoom-level");
+            if (int.TryParse(zoomStr, out int savedZoom) && savedZoom >= 50 && savedZoom <= 130)
+                zoomLevel = savedZoom;
+            StateHasChanged();
             _shouldResizeGrid = true;
         }
 
@@ -490,10 +1329,25 @@
 
     private async Task UpdateItemProperty(InventoryItem item, string propertyName, string? newValue)
     {
+        var mapping = activeMappings.FirstOrDefault(m => m.Property == propertyName);
+        if (mapping != null && !IsValueValid(newValue, mapping.ValidationRegex))
+        {
+            // Revert or show error
+            Logger.LogWarning("Validation failed for {prop} with value {val}", propertyName, newValue);
+            // In a real app we might want to notify user. For now lets just not save.
+            // Items is already updated locally because of @onchange, we might need to refresh
+            await SelectGroup(selectedGroupId, false); 
+            return;
+        }
+
         var propInfo = item.GetType().GetProperty(propertyName);
         if (propInfo != null && propInfo.CanWrite)
         {
             propInfo.SetValue(item, newValue ?? string.Empty);
+            
+            // Apply extractions to other columns
+            ApplyExtractions(item);
+
             using var db = await DbFactory.CreateDbContextAsync();
             db.InventoryItems.Update(item);
             await db.SaveChangesAsync();
@@ -625,6 +1479,11 @@
             return;
         }
 
+        foreach (var item in parsedItems)
+        {
+            ApplyExtractions(item);
+        }
+
         showPreview = true;
     }
 
@@ -636,6 +1495,10 @@
     private async Task SaveParsedItems()
     {
         using var db = await DbFactory.CreateDbContextAsync();
+        foreach (var item in parsedItems)
+        {
+            ApplyExtractions(item);
+        }
         db.InventoryItems.AddRange(parsedItems);
         await db.SaveChangesAsync();
 
@@ -665,6 +1528,21 @@
 
     private async Task SaveSingleItem()
     {
+        singleAddValidationErrors.Clear();
+        bool hasErrors = false;
+
+        foreach (var m in activeMappings)
+        {
+            var value = singleAddItemData.GetValueOrDefault(m.Property, "");
+            if (!IsValueValid(value, m.ValidationRegex))
+            {
+                singleAddValidationErrors[m.Property] = $"Invalid format. Expected: {m.ValidationRegex}";
+                hasErrors = true;
+            }
+        }
+
+        if (hasErrors) return;
+
         var newItem = new InventoryItem { InventoryGroupId = selectedGroupId };
         foreach (var kvp in singleAddItemData)
         {
@@ -674,6 +1552,9 @@
                 propInfo.SetValue(newItem, kvp.Value);
             }
         }
+
+        // Apply extractions before saving
+        ApplyExtractions(newItem);
 
         using var db = await DbFactory.CreateDbContextAsync();
         db.InventoryItems.Add(newItem);

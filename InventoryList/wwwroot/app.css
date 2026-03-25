@@ -137,9 +137,73 @@ h1:focus {
     border-right: 2px solid #0d6efd;
 }
 
-/* Hide Blazor.Bootstrap default filter row if still present */
-.bb-grid-filter-row, .grid-filter-row {
-    display: none !important;
+/* Compact Blazor.Bootstrap filter row */
+.compact-grid thead tr:nth-child(2) th {
+    padding: 2px 4px !important;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6 !important;
+}
+
+.compact-grid thead tr:nth-child(2) th .bb-string-filter,
+.compact-grid thead tr:nth-child(2) th .input-group {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.compact-grid thead tr:nth-child(2) th .input-group {
+    height: 22px;
+    min-height: unset;
+}
+
+.compact-grid thead tr:nth-child(2) th input.form-control,
+.compact-grid thead tr:nth-child(2) th select.form-select {
+    height: 22px !important;
+    min-height: unset !important;
+    padding: 0 4px !important;
+    font-size: 0.65rem !important;
+    line-height: 1 !important;
+    border-radius: 3px !important;
+}
+
+.compact-grid thead tr:nth-child(2) th .input-group-text {
+    height: 22px !important;
+    min-height: unset !important;
+    padding: 0 3px !important;
+    font-size: 0.6rem !important;
+    line-height: 1 !important;
+    border-radius: 3px 0 0 3px !important;
+}
+
+.compact-grid thead tr:nth-child(2) th .input-group-text .bi,
+.compact-grid thead tr:nth-child(2) th .input-group-text svg {
+    font-size: 0.55rem !important;
+    width: 10px;
+    height: 10px;
+}
+
+.compact-grid thead tr:nth-child(2) th button {
+    height: 22px !important;
+    min-height: unset !important;
+    padding: 0 3px !important;
+    font-size: 0.6rem !important;
+    line-height: 1 !important;
+}
+
+.compact-grid thead tr:nth-child(2) th .dropdown-menu {
+    font-size: 0.7rem !important;
+    min-width: 100px;
+    position: fixed !important;
+    z-index: 9999 !important;
+}
+
+/* Ensure filter dropdowns aren't clipped by overflow containers */
+.compact-grid thead {
+    overflow: visible !important;
+}
+
+.compact-grid thead tr:nth-child(2) th {
+    overflow: visible !important;
 }
 
 /* Hide default Blazor Bootstrap sorting icons on headers without losing functionality */
@@ -159,6 +223,28 @@ h1:focus {
     cursor: pointer !important;
     position: relative;
     user-select: none;
+}
+
+/* Folder Styles */
+.folder-header:hover {
+    background: rgba(255,255,255,0.1) !important;
+}
+
+.sidebar-group-item {
+    position: relative;
+}
+
+.sidebar-move-btn {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.sidebar-group-item:hover .sidebar-move-btn {
+    opacity: 0.6;
+}
+
+.sidebar-move-btn:hover {
+    opacity: 1 !important;
 }
 
 /* Sidebar transition effects */
