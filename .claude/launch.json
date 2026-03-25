@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "inventory-list",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "dotnet run --project InventoryList --urls http://localhost:5220"],
+      "port": 5220
+    }
+  ]
+}

@@ -43,15 +43,34 @@
 
                         <h6>Columns</h6>
                         <p class="text-muted small">
-                            Define the default columns included in this template. 
+                            Define the default columns included in this template.
                             <strong>Note:</strong> Templates act as initial blueprints. Updating these columns will not automatically push changes to existing inventory groups.
                         </p>
+
+                        <div class="alert alert-light border py-2 mb-3" style="font-size: 0.8rem;">
+                            <i class="bi bi-lightbulb text-warning"></i>
+                            <strong>Auto-Extract Feature:</strong> You can make a column automatically pull data from another column using regex.
+                            Set a <em>Source Column</em> and an <em>Extract Regex</em> with a <strong>capturing group</strong> <code>(...)</code>.
+                            <details class="mt-1">
+                                <summary class="text-primary" style="cursor:pointer;">Show examples</summary>
+                                <table class="table table-sm table-borderless mb-0 mt-1" style="font-size: 0.78rem;">
+                                    <tr><td class="text-muted" style="width:200px;">KB from version string</td><td><code>(KB\s*\d+)</code></td><td class="text-muted">"Windows 2025 KB 5024654" → <strong>KB 5024654</strong></td></tr>
+                                    <tr><td class="text-muted">Digits only</td><td><code>KB\s*(\d+)</code></td><td class="text-muted">"KB 5024654" → <strong>5024654</strong></td></tr>
+                                    <tr><td class="text-muted">Year</td><td><code>(\d{4})</code></td><td class="text-muted">"Windows 2025 KB..." → <strong>2025</strong></td></tr>
+                                    <tr><td class="text-muted">First word</td><td><code>^(\w+)</code></td><td class="text-muted">"Windows 2025" → <strong>Windows</strong></td></tr>
+                                </table>
+                                <p class="mt-1 mb-0 text-muted">For existing groups, use the <i class="bi bi-gear"></i> button in the inventory toolbar to edit extraction rules.</p>
+                            </details>
+                        </div>
                         
                         <div class="table-responsive">
                             <table class="table table-sm align-middle">
                                 <thead>
                                     <tr>
                                         <th>Column Name</th>
+                                        <th>Validation Regex (Optional)</th>
+                                        <th>Source Column (Optional)</th>
+                                        <th>Extract Regex</th>
                                         <th style="width:50px;"></th>
                                     </tr>
                                 </thead>
@@ -60,6 +79,17 @@
                                     {
                                         <tr>
                                             <td><input @bind="m.Header" class="form-control form-control-sm" /></td>
+                                            <td><input @bind="m.ValidationRegex" class="form-control form-control-sm font-monospace" placeholder="e.g. ^\d+$" /></td>
+                                            <td>
+                                                <select @bind="m.SourceProperty" class="form-select form-select-sm">
+                                                    <option value="">None</option>
+                                                    @foreach (var p in itemProperties)
+                                                    {
+                                                        <option value="@p">@p</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td><input @bind="m.ExtractRegex" class="form-control form-control-sm font-monospace" placeholder="Capture group: (.*)" title="If a Source Column is selected, use a regex with a capturing group to extract values." /></td>
                                             <td>
                                                 <button class="btn btn-outline-danger btn-sm" @onclick="() => RemoveMapping(m)">
                                                     <i class="bi bi-trash"></i>
