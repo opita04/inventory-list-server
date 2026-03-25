@@ -15,6 +15,9 @@ public class InventoryGroup
     public int? InventoryTemplateId { get; set; }
     public InventoryTemplate? InventoryTemplate { get; set; }
 
+    public int? InventoryFolderId { get; set; }
+    public InventoryFolder? InventoryFolder { get; set; }
+
     /// <summary>
     /// Stores per-group column widths and visibility: { "Name": 150, "IP": 100 }
     /// </summary>

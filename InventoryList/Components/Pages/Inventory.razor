@@ -38,31 +38,133 @@
                         <i class="bi bi-plus-lg"></i>
                     </button>
                 </div>
+                @* Folder creation *@
+                <div class="d-flex gap-1 mt-1">
+                    <input @bind="newFolderName" @bind:event="oninput" class="form-control form-control-sm" placeholder="New Folder..." />
+                    <button class="btn btn-sm btn-outline-light px-2" @onclick="AddFolder" disabled="@string.IsNullOrWhiteSpace(newFolderName)" title="Create Folder">
+                        <i class="bi bi-folder-plus"></i>
+                    </button>
+                </div>
             </div>
         }
 
         <div class="list-group list-group-flush overflow-auto flex-grow-1">
-            @foreach (var g in groups)
+            @* ── Ungrouped (root-level) groups ── *@
+            @foreach (var g in groups.Where(g => g.InventoryFolderId == null))
             {
-                <button class="list-group-item list-group-item-action @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary px-2"
-                        title="@g.Name"
-                        @onclick="() => SelectGroup(g.Id)">
-                    <div class="d-flex align-items-center justify-content-between">
-                        @if (isSidebarCollapsed)
-                        {
-                            <span class="badge bg-secondary">@g.Name.FirstOrDefault()</span>
-                        }
-                        else
-                        {
-                            <span class="text-truncate me-2">@g.Name</span>
-                            <span class="badge bg-secondary font-monospace" style="font-size: 0.65rem;">@g.Items.Count</span>
-                        }
-                    </div>
-                </button>
+                <div class="d-flex align-items-center sidebar-group-item">
+                    <button class="list-group-item list-group-item-action flex-grow-1 @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary px-2"
+                            title="@g.Name"
+                            @onclick="() => SelectGroup(g.Id)">
+                        <div class="d-flex align-items-center justify-content-between">
+                            @if (isSidebarCollapsed)
+                            {
+                                <span class="badge bg-secondary">@g.Name.FirstOrDefault()</span>
+                            }
+                            else
+                            {
+                                <span class="text-truncate me-2">@g.Name</span>
+                                <span class="badge bg-secondary font-monospace" style="font-size: 0.65rem;">@g.Items.Count</span>
+                            }
+                        </div>
+                    </button>
+                    @if (!isSidebarCollapsed && folders.Any())
+                    {
+                        <div class="dropdown">
+                            <button class="btn btn-sm text-white border-0 px-1 sidebar-move-btn" data-bs-toggle="dropdown" title="Move to folder">
+                                <i class="bi bi-folder-symlink" style="font-size:0.7rem;"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-dark" style="font-size:0.78rem;">
+                                @foreach (var f in folders)
+                                {
+                                    var folderId = f.Id;
+                                    <li><button class="dropdown-item" @onclick="() => MoveGroupToFolder(g.Id, folderId)"><i class="bi bi-folder me-1"></i>@f.Name</button></li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Folders with their groups ── *@
+            @foreach (var folder in folders)
+            {
+                var f = folder;
+                var isOpen = !folderCollapseState.GetValueOrDefault(f.Id, false);
+                var folderGroups = groups.Where(g => g.InventoryFolderId == f.Id).ToList();
+
+                <div class="folder-header d-flex align-items-center px-2 py-1 text-white-50 border-secondary"
+                     style="cursor:pointer; font-size:0.75rem; background:rgba(255,255,255,0.05);"
+                     @onclick="() => ToggleFolder(f.Id)">
+                    <i class="bi @(isOpen ? "bi-chevron-down" : "bi-chevron-right") me-1" style="font-size:0.65rem;"></i>
+                    <i class="bi @(isOpen ? "bi-folder2-open" : "bi-folder2") me-1"></i>
+                    @if (editingFolderId == f.Id)
+                    {
+                        <input class="form-control form-control-sm bg-transparent text-white border-0 p-0"
+                               style="font-size:0.75rem; box-shadow:none;"
+                               value="@f.Name" autofocus
+                               @onclick:stopPropagation="true"
+                               @onblur="() => editingFolderId = null"
+                               @onchange="@(async e => { await RenameFolder(f.Id, e.Value?.ToString()); editingFolderId = null; })" />
+                    }
+                    else
+                    {
+                        <span class="text-truncate flex-grow-1" @ondblclick="() => editingFolderId = f.Id" @ondblclick:stopPropagation="true">@f.Name</span>
+                    }
+                    <span class="badge bg-secondary font-monospace me-1" style="font-size:0.55rem;">@folderGroups.Count</span>
+                    <button class="btn btn-sm text-white-50 border-0 p-0" style="font-size:0.65rem;"
+                            title="Delete folder" @onclick="() => DeleteFolder(f.Id)" @onclick:stopPropagation="true">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+
+                @if (isOpen)
+                {
+                    @foreach (var g in folderGroups)
+                    {
+                        <div class="d-flex align-items-center sidebar-group-item">
+                            <button class="list-group-item list-group-item-action flex-grow-1 @(g.Id == selectedGroupId ? "active" : "") bg-dark text-white border-secondary px-2"
+                                    style="padding-left: 24px !important;"
+                                    title="@g.Name"
+                                    @onclick="() => SelectGroup(g.Id)">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span class="text-truncate me-2">@g.Name</span>
+                                    <span class="badge bg-secondary font-monospace" style="font-size: 0.65rem;">@g.Items.Count</span>
+                                </div>
+                            </button>
+                            <div class="dropdown">
+                                <button class="btn btn-sm text-white border-0 px-1 sidebar-move-btn" data-bs-toggle="dropdown" title="Move to folder">
+                                    <i class="bi bi-folder-symlink" style="font-size:0.7rem;"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-dark" style="font-size:0.78rem;">
+                                    <li><button class="dropdown-item" @onclick="() => MoveGroupToFolder(g.Id, null)"><i class="bi bi-dash-circle me-1"></i>No Folder</button></li>
+                                    @foreach (var otherFolder in folders.Where(of => of.Id != f.Id))
+                                    {
+                                        var targetId = otherFolder.Id;
+                                        <li><button class="dropdown-item" @onclick="() => MoveGroupToFolder(g.Id, targetId)"><i class="bi bi-folder me-1"></i>@otherFolder.Name</button></li>
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    }
+                }
             }
         </div>
 
         <div class="mt-auto pt-3 border-top border-secondary overflow-hidden">
+            @if (!isSidebarCollapsed)
+            {
+                <div class="d-flex align-items-center px-2 py-1 text-white-50" style="font-size:0.7rem;">
+                    <i class="bi bi-zoom-out me-1"></i>
+                    <input type="range" class="form-range form-range-sm flex-grow-1" style="height:12px;"
+                           min="50" max="130" step="5"
+                           value="@zoomLevel"
+                           @onchange="OnZoomChanged" title="Zoom: @(zoomLevel)%" />
+                    <i class="bi bi-zoom-in ms-1"></i>
+                    <button class="btn btn-sm text-white-50 border-0 p-0 ms-1" style="font-size:0.6rem;"
+                            @onclick="ResetZoom" title="Reset to 100%">@(zoomLevel)%</button>
+                </div>
+            }
             <a class="nav-link text-white p-2 d-flex align-items-center" href="/templates" title="Manage Templates">
                 <i class="bi bi-gear me-2"></i> @(!isSidebarCollapsed ? "Templates" : "")
             </a>
@@ -73,7 +175,7 @@
     </div>
 
     @* ───── MAIN AREA ───── *@
-    <div class="flex-grow-1 d-flex flex-column overflow-hidden">
+    <div class="flex-grow-1 d-flex flex-column overflow-hidden" style="zoom: @(zoomLevel)%;">
         @if (selectedGroupId > 0)
         {
             <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
@@ -507,22 +609,42 @@
     private List<InventoryGroup> groups = new();
     private List<InventoryItem> items = new();
     private List<InventoryTemplate> allTemplates = new();
+    private List<InventoryFolder> folders = new();
     private InventoryGroup? selectedGroup;
     private int selectedGroupId;
     private string selectedGroupName = "";
     private string newGroupName = "";
+    private string newFolderName = "";
     private int? newGroupTemplateId;
     private bool gridRev = false;
     private bool isSidebarCollapsed = false;
     private string currentSortProperty = "";
     private SortDirection currentSortDirection = SortDirection.None;
     private string searchTerm = "";
+    private Dictionary<int, bool> folderCollapseState = new();
+    private int? editingFolderId = null;
+    private int zoomLevel = 100;
 
     private List<InventoryItem> itemsToShow => string.IsNullOrEmpty(searchTerm) 
         ? items 
         : items.Where(i => activeMappings.Any(m => GetValue(i, m.Property)?.ToString()?.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) == true)).ToList();
 
     private void ToggleSidebar() => isSidebarCollapsed = !isSidebarCollapsed;
+
+    private async Task OnZoomChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int val))
+        {
+            zoomLevel = val;
+            await JS.InvokeVoidAsync("localStorage.setItem", "app-zoom-level", zoomLevel.ToString());
+        }
+    }
+
+    private async Task ResetZoom()
+    {
+        zoomLevel = 100;
+        await JS.InvokeVoidAsync("localStorage.setItem", "app-zoom-level", "100");
+    }
 
     private void DeselectGroup()
     {
@@ -532,6 +654,82 @@
         items = new();
         activeMappings = new();
         gridRev = !gridRev;
+    }
+
+    // ── Folders ──
+    private async Task LoadFolders()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        folders = await db.InventoryFolders
+            .Where(f => !f.IsDeleted)
+            .OrderBy(f => f.SortOrder).ThenBy(f => f.Name)
+            .ToListAsync();
+    }
+
+    private async Task AddFolder()
+    {
+        if (string.IsNullOrWhiteSpace(newFolderName)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        db.InventoryFolders.Add(new InventoryFolder { Name = newFolderName.Trim() });
+        await db.SaveChangesAsync();
+        newFolderName = "";
+        await LoadFolders();
+    }
+
+    private async Task RenameFolder(int folderId, string? newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        using var db = await DbFactory.CreateDbContextAsync();
+        var folder = await db.InventoryFolders.FindAsync(folderId);
+        if (folder != null)
+        {
+            folder.Name = newName.Trim();
+            await db.SaveChangesAsync();
+            await LoadFolders();
+        }
+    }
+
+    private async Task DeleteFolder(int folderId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        // Unassign groups from this folder first
+        var folderGroups = await db.InventoryGroups.Where(g => g.InventoryFolderId == folderId).ToListAsync();
+        foreach (var g in folderGroups) g.InventoryFolderId = null;
+        var folder = await db.InventoryFolders.FindAsync(folderId);
+        if (folder != null) db.InventoryFolders.Remove(folder);
+        await db.SaveChangesAsync();
+        await LoadFolders();
+        await LoadGroups();
+    }
+
+    private async Task MoveGroupToFolder(int groupId, int? folderId)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var group = await db.InventoryGroups.FindAsync(groupId);
+        if (group != null)
+        {
+            group.InventoryFolderId = folderId;
+            await db.SaveChangesAsync();
+            // Refresh local state
+            var localGroup = groups.FirstOrDefault(g => g.Id == groupId);
+            if (localGroup != null) localGroup.InventoryFolderId = folderId;
+        }
+    }
+
+    private async Task ToggleFolder(int folderId)
+    {
+        var current = folderCollapseState.GetValueOrDefault(folderId, false);
+        folderCollapseState[folderId] = !current;
+        await JS.InvokeVoidAsync("localStorage.setItem", $"folder-collapsed-{folderId}", (!current).ToString().ToLower());
+    }
+
+    private async Task LoadFolderCollapseState()
+    {
+        foreach (var f in folders)
+        {
+            var val = await JS.InvokeAsync<string>("localStorage.getItem", $"folder-collapsed-{f.Id}");
+            if (val == "true") folderCollapseState[f.Id] = true;
+        }
     }
 
     private async Task SortColumn(string propertyName)
@@ -972,6 +1170,7 @@
     {
         using var db = await DbFactory.CreateDbContextAsync();
         allTemplates = await db.InventoryTemplates.Where(t => !t.IsDeleted).ToListAsync();
+        await LoadFolders();
         await LoadGroups();
     }
 
@@ -992,6 +1191,11 @@
             }
             catch (Exception ex) { Logger.LogWarning(ex, "Failed to load last group from local storage"); }
 
+            await LoadFolderCollapseState();
+            var zoomStr = await JS.InvokeAsync<string>("localStorage.getItem", "app-zoom-level");
+            if (int.TryParse(zoomStr, out int savedZoom) && savedZoom >= 50 && savedZoom <= 130)
+                zoomLevel = savedZoom;
+            StateHasChanged();
             _shouldResizeGrid = true;
         }
 

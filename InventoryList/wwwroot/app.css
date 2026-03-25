@@ -225,6 +225,28 @@ h1:focus {
     user-select: none;
 }
 
+/* Folder Styles */
+.folder-header:hover {
+    background: rgba(255,255,255,0.1) !important;
+}
+
+.sidebar-group-item {
+    position: relative;
+}
+
+.sidebar-move-btn {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.sidebar-group-item:hover .sidebar-move-btn {
+    opacity: 0.6;
+}
+
+.sidebar-move-btn:hover {
+    opacity: 1 !important;
+}
+
 /* Sidebar transition effects */
 .sidebar-transition {
     transition: width 0.3s ease, min-width 0.3s ease;

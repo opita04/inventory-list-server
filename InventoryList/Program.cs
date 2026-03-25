@@ -55,6 +55,19 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
     db.Database.EnsureCreated();
 
+    // Ensure InventoryFolders table exists (for existing databases)
+    db.Database.ExecuteSqlRaw(@"
+        CREATE TABLE IF NOT EXISTS InventoryFolders (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Name TEXT NOT NULL,
+            SortOrder INTEGER NOT NULL DEFAULT 0,
+            IsDeleted INTEGER NOT NULL DEFAULT 0,
+            CreatedOn TEXT NOT NULL DEFAULT (datetime('now'))
+        )");
+    // Ensure InventoryFolderId column exists on InventoryGroups
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE InventoryGroups ADD COLUMN InventoryFolderId INTEGER REFERENCES InventoryFolders(Id) ON DELETE SET NULL"); }
+    catch { /* column already exists */ }
+
     // Seed only: create the SQL Server template if it doesn't exist, never overwrite user edits
     var existing = db.InventoryTemplates.FirstOrDefault(t => t.Name == "SQL Server");
     if (existing == null)

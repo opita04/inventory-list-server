@@ -10,6 +10,7 @@ public class InventoryDbContext : DbContext
     public DbSet<InventoryGroup> InventoryGroups => Set<InventoryGroup>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<InventoryTemplate> InventoryTemplates => Set<InventoryTemplate>();
+    public DbSet<InventoryFolder> InventoryFolders => Set<InventoryFolder>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     public override int SaveChanges()
@@ -55,6 +56,7 @@ public class InventoryDbContext : DbContext
             {
                 if (entry.Entity is InventoryGroup g) { g.IsDeleted = true; entry.State = EntityState.Modified; action = "Deleted"; }
                 else if (entry.Entity is InventoryTemplate t) { t.IsDeleted = true; entry.State = EntityState.Modified; action = "Deleted"; }
+                else if (entry.Entity is InventoryFolder f) { f.IsDeleted = true; entry.State = EntityState.Modified; action = "Deleted"; }
             }
             else if (entry.State == EntityState.Modified)
             {
@@ -128,6 +130,15 @@ public class InventoryDbContext : DbContext
             e.HasMany(t => t.Groups)
              .WithOne(g => g.InventoryTemplate)
              .HasForeignKey(g => g.InventoryTemplateId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<InventoryFolder>(e =>
+        {
+            e.HasKey(f => f.Id);
+            e.HasMany(f => f.Groups)
+             .WithOne(g => g.InventoryFolder)
+             .HasForeignKey(g => g.InventoryFolderId)
              .OnDelete(DeleteBehavior.SetNull);
         });
 
